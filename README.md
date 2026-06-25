@@ -1,5 +1,10 @@
 # ShieldTools
 
+![Language](https://img.shields.io/badge/language-Russian%20only-blue)
+![Python](https://img.shields.io/badge/Python-3.10%2B-yellow)
+![Telegram](https://img.shields.io/badge/platform-Telegram-26A5E4)
+![Status](https://img.shields.io/badge/status-active-success)
+
 ShieldTools - это Telegram-бот с набором инструментов для базовой проверки цифровой безопасности. Бот умеет анализировать подозрительные сообщения, проверять сайты, домены, IP-адреса, email и файлы, а также генерировать пароли и шифровать документы.
 
 ## Возможности
