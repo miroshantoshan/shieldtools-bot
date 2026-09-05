@@ -76,3 +76,7 @@ Do not upload `.env` to GitHub. It may contain private tokens and is already lis
 A clean result does not prove that a message, link, or file is safe. Files submitted for scanning are sent to Kaspersky OpenTIP. AI checks send the provided text or scan result to the first configured provider that responds.
 
 Encrypted files use the `.shield` extension. The password is not stored, so a lost password cannot be recovered.
+
+## License
+
+Released under the MIT License. See [LICENSE](LICENSE).
