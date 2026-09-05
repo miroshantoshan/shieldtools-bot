@@ -13,8 +13,6 @@ It can:
 - check email addresses with DNS and Stop Forum Spam
 - encrypt and decrypt files with AES-256-GCM
 
-![ShieldTools main menu](images/main.png)
-
 ## Setup
 
 Python 3.10 or newer is required.
