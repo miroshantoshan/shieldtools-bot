@@ -20,6 +20,32 @@ menu = ReplyKeyboardMarkup(
 )
 
 
+menu_with_business = ReplyKeyboardMarkup(
+    keyboard=[
+        [
+            KeyboardButton(text="Проверка SMS", icon_custom_emoji_id="5891243564309942507"),
+            KeyboardButton(text="Проверка сайта", icon_custom_emoji_id="6019245310696495518"),
+        ],
+        [
+            KeyboardButton(text="Проверка файла", icon_custom_emoji_id="6021375494216226506"),
+            KeyboardButton(text="Доп. функции", icon_custom_emoji_id="6023566962624306038"),
+        ],
+        [
+            KeyboardButton(text="Проверка номера", icon_custom_emoji_id="6019279794988915337"),
+        ],
+        [
+            KeyboardButton(
+                text="Подключить бота к аккаунту",
+                icon_custom_emoji_id="6030400221232501136",
+                style="primary",
+            ),
+        ],
+    ],
+    resize_keyboard=True,
+    is_persistent=True,
+)
+
+
 additional_menu = ReplyKeyboardMarkup(
     keyboard=[
         [

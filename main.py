@@ -53,6 +53,7 @@ from keyboards import (
     get_wait_input_keyboard,
     get_wait_password_keyboard,
     menu,
+    menu_with_business,
 )
 
 
@@ -76,6 +77,7 @@ EMAIL_BUTTONS = ["Email", "📧 Email"]
 CRYPTO_BUTTONS = ["Шифратор", "🔐 Шифратор"]
 ADDITIONAL_MENU_BUTTONS = ["Доп. функции", "🧰 Доп. функции"]
 MAIN_MENU_BUTTONS = ["Главное меню", "⬅️ Главное меню"]
+BUSINESS_CONNECT_BUTTONS = ["Подключить бота к аккаунту"]
 SCAM_CHECK_TEXT = '''<tg-emoji emoji-id="5219805369806629055">🛡</tg-emoji> Проверка на мошенничество (фишинг)
 
 <tg-emoji emoji-id="6021741116192201252">📩</tg-emoji> Отправьте подозрительное сообщение, которое нужно проверить.
@@ -100,9 +102,61 @@ CRYPTO_IMAGE = IMAGE_BASE + "crypto.png"
 BUSINESS_ALERT_IMAGE = IMAGE_BASE + "business_alert.png?v=415bbd0"
 BUSINESS_CONNECTED_IMAGE = IMAGE_BASE + "business_connected.png"
 BUSINESS_GUIDE_VIDEO = "https://raw.githubusercontent.com/miroshantoshan/shieldtools-bot/main/videos/business_setup.mp4"
+BUSINESS_STATE_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "business_users.json")
+BUSINESS_AD_DELAY = 3 * 60 * 60
 TWO_IP_API_TOKEN = os.getenv("TWO_IP_API_TOKEN", "")
 GOOGLE_SAFE_BROWSING_API_KEY = os.getenv("GOOGLE_SAFE_BROWSING_API_KEY", "")
 KASPERSKY_OPENTIP_API_KEY = os.getenv("KASPERSKY_OPENTIP_API_KEY", "")
+
+
+def load_business_users():
+    try:
+        with open(BUSINESS_STATE_FILE, "r", encoding="utf-8") as file:
+            data = json.load(file)
+            if isinstance(data, dict):
+                return data
+    except Exception:
+        pass
+    return {}
+
+
+BUSINESS_USERS = load_business_users()
+
+
+def save_business_users():
+    try:
+        with open(BUSINESS_STATE_FILE, "w", encoding="utf-8") as file:
+            json.dump(BUSINESS_USERS, file, ensure_ascii=False)
+    except Exception as error:
+        print("Не удалось сохранить подключения:", repr(error))
+
+
+def start_business_timer(user_id):
+    key = str(user_id)
+    if key not in BUSINESS_USERS:
+        BUSINESS_USERS[key] = {
+            "connected": False,
+            "next_ad": int(time.time()) + BUSINESS_AD_DELAY,
+        }
+        save_business_users()
+
+
+def set_business_connected(user_id, connected):
+    BUSINESS_USERS[str(user_id)] = {
+        "connected": connected,
+        "next_ad": 0 if connected else int(time.time()) + BUSINESS_AD_DELAY,
+    }
+    save_business_users()
+
+
+def is_business_connected(user_id):
+    return bool(BUSINESS_USERS.get(str(user_id), {}).get("connected"))
+
+
+def get_main_keyboard(user_id):
+    if is_business_connected(user_id):
+        return menu
+    return menu_with_business
 
 
 class States(StatesGroup):
@@ -139,12 +193,7 @@ async def send_main_photo(message, text, reply_markup=None):
             MAIN_IMAGE,
             caption=text,
             parse_mode="HTML",
-            reply_markup=InlineKeyboardMarkup(inline_keyboard=[[
-                InlineKeyboardButton(
-                    text="Инструкция по подключению",
-                    callback_data="business_guide",
-                )
-            ]]),
+            reply_markup=reply_markup,
         )
     except Exception as error:
         print("Ошибка главной картинки:", repr(error))
@@ -155,17 +204,6 @@ async def send_main_photo(message, text, reply_markup=None):
 
         await message.answer(
             text,
-            parse_mode="HTML",
-            reply_markup=InlineKeyboardMarkup(inline_keyboard=[[
-                InlineKeyboardButton(
-                    text="Инструкция по подключению",
-                    callback_data="business_guide",
-                )
-            ]]),
-        )
-    if reply_markup:
-        await message.answer(
-            "<b>Выберите нужный раздел в меню ниже.</b>",
             parse_mode="HTML",
             reply_markup=reply_markup,
         )
@@ -293,6 +331,7 @@ async def save_wait_message(state, message, message_id):
 
 @dp.message(F.text.startswith("/start"))
 async def start(message: Message, state: FSMContext):
+    start_business_timer(message.chat.id)
     await state.clear()
 
     remove_keyboard_message = await message.answer(
@@ -322,7 +361,7 @@ async def access_check(callback: CallbackQuery, state: FSMContext):
     await send_main_photo(
         callback.message,
         get_main_menu_text(callback.from_user),
-        menu,
+        get_main_keyboard(callback.from_user.id),
     )
     await callback.answer()
 
@@ -357,9 +396,9 @@ async def business_help(message: Message):
     )
 
 
-@dp.callback_query(F.data == "business_guide")
-async def business_guide(callback: CallbackQuery):
-    await callback.message.answer_video(
+async def send_business_guide(bot, chat_id):
+    await bot.send_video(
+        chat_id,
         BUSINESS_GUIDE_VIDEO,
         caption='''<b><i><tg-emoji emoji-id="6023622161543993632">🧭</tg-emoji> Как подключить ShieldTools к аккаунту</i></b>
 
@@ -379,9 +418,38 @@ async def business_guide(callback: CallbackQuery):
     )
 
 
+@dp.callback_query(F.data == "business_guide")
+async def business_guide(callback: CallbackQuery):
+    await send_business_guide(callback.bot, callback.message.chat.id)
+
+
+@dp.message(F.text.in_(BUSINESS_CONNECT_BUTTONS))
+async def business_guide_message(message: Message):
+    await send_business_guide(message.bot, message.chat.id)
+
+
 @dp.callback_query(F.data == "business_guide_understood")
 async def business_guide_understood(callback: CallbackQuery):
     await callback.message.edit_reply_markup(reply_markup=None)
+
+
+async def business_advertising(bot):
+    while True:
+        now = int(time.time())
+        changed = False
+        for user_id, data in list(BUSINESS_USERS.items()):
+            if data.get("connected") or data.get("next_ad", 0) > now:
+                continue
+            try:
+                await send_business_guide(bot, int(user_id))
+            except Exception as error:
+                print("Не удалось отправить напоминание:", repr(error))
+                continue
+            data["next_ad"] = now + BUSINESS_AD_DELAY
+            changed = True
+        if changed:
+            save_business_users()
+        await asyncio.sleep(60)
 
 
 @dp.message(F.text.in_(ADDITIONAL_MENU_BUTTONS))
@@ -402,7 +470,7 @@ async def show_main_menu(message: Message, state: FSMContext):
     await send_main_photo(
         message,
         get_main_menu_text(message.from_user),
-        menu,
+        get_main_keyboard(message.from_user.id),
     )
 
 
@@ -566,7 +634,7 @@ async def back_to_menu(callback: CallbackQuery, state: FSMContext):
     await send_main_photo(
         callback.message,
         get_main_menu_text(callback.from_user),
-        menu,
+        get_main_keyboard(callback.from_user.id),
     )
     await callback.answer()
 
@@ -2052,6 +2120,7 @@ async def business_alert_read(callback: CallbackQuery):
 @dp.business_connection()
 async def business_connected(connection: BusinessConnection, bot: Bot):
     if connection.is_enabled:
+        set_business_connected(connection.user_chat_id, True)
         delete_ready = connection.rights and connection.rights.can_delete_all_messages
         delete_text = ""
         if not delete_ready:
@@ -2065,6 +2134,15 @@ async def business_connected(connection: BusinessConnection, bot: Bot):
 
 Теперь бот будет проверять новые сообщения в выбранных чатах и предупреждать о мошенничестве в реальном времени.'''+ delete_text,
             parse_mode="HTML",
+            reply_markup=menu,
+        )
+    else:
+        set_business_connected(connection.user_chat_id, False)
+        await bot.send_message(
+            connection.user_chat_id,
+            "<b>ShieldTools отключён от аккаунта.</b> Проверка сообщений в реальном времени остановлена.",
+            parse_mode="HTML",
+            reply_markup=menu_with_business,
         )
 
 
@@ -2599,13 +2677,21 @@ async def choose_mode_message(message: Message):
 async def main():
     while True:
         bot = Bot(token=tg_bot_token)
+        advertising_task = None
         try:
             await set_commands_menu(bot)
+            advertising_task = asyncio.create_task(business_advertising(bot))
             await dp.start_polling(bot, close_bot_session=False)
             return
         except (TelegramNetworkError, TelegramServerError) as error:
             print("Нет связи с Telegram, повтор через 5 секунд:", error)
         finally:
+            if advertising_task:
+                advertising_task.cancel()
+                try:
+                    await advertising_task
+                except asyncio.CancelledError:
+                    pass
             await bot.session.close()
         await asyncio.sleep(5)
 
