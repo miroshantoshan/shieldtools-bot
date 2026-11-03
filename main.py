@@ -164,11 +164,11 @@ async def send_main_photo(message, text, reply_markup=None):
             ]]),
         )
     if reply_markup:
-        keyboard_message = await message.answer("⁠", reply_markup=reply_markup)
-        try:
-            await keyboard_message.delete()
-        except Exception:
-            pass
+        await message.answer(
+            "<b>Выберите нужный раздел в меню ниже.</b>",
+            parse_mode="HTML",
+            reply_markup=reply_markup,
+        )
 
 
 async def send_section_photo(message, image, text, reply_markup=None):

@@ -16,6 +16,7 @@ menu = ReplyKeyboardMarkup(
         ],
     ],
     resize_keyboard=True,
+    is_persistent=True,
 )
 
 
@@ -37,6 +38,7 @@ additional_menu = ReplyKeyboardMarkup(
         ],
     ],
     resize_keyboard=True,
+    is_persistent=True,
 )
 
 
