@@ -127,7 +127,10 @@ def get_main_menu_text(user):
 
 <tg-emoji emoji-id="6019328362479097179">🛡</tg-emoji> Добро пожаловать в <b><u>ShieldTools</u></b> - бота, в котором собраны основные инструменты для проверки данных.
 
-<tg-emoji emoji-id="6023622161543993632">🧭</tg-emoji> <b>Выберите нужный раздел в меню ниже, чтобы начать работу.</b>'''
+<tg-emoji emoji-id="6023622161543993632">🧭</tg-emoji> <b>Выберите нужный раздел в меню ниже, чтобы начать работу.</b>
+
+<tg-emoji emoji-id="6030400221232501136">🤖</tg-emoji> <b>Создание и подключение бизнес-бота</b>
+<a href="https://example.com">Открыть инструкцию по подключению</a>'''
 
 async def send_main_photo(message, text, reply_markup=None):
     try:
@@ -1942,7 +1945,7 @@ def get_business_phone(message):
     return None
 
 
-def make_business_alert(message, codes, nomer, sources):
+def make_business_alert(message, codes, nomer, sources, deleted):
     sender = message.from_user
     name = safe_text(sender.full_name)
     if sender.username and re.fullmatch(r"[A-Za-z0-9_]{5,32}", sender.username):
@@ -1969,6 +1972,10 @@ def make_business_alert(message, codes, nomer, sources):
     )
     if source_text:
         source_text = "\n<b>Проверка номера:</b>\n" + source_text + "\n"
+    if deleted:
+        delete_text = "<b>Сообщение было удалено у обоих участников чата.</b>"
+    else:
+        delete_text = "<b>Не удалось удалить сообщение. Проверьте разрешения бизнес-бота.</b>"
     answer = f'''<b><i><tg-emoji emoji-id="5219805369806629055">🛡</tg-emoji> Новое подозрительное сообщение</i></b>
 
 <tg-emoji emoji-id="6023985511482268644">👤</tg-emoji> <b>Отправитель:</b> {sender_text}
@@ -1980,7 +1987,9 @@ def make_business_alert(message, codes, nomer, sources):
 <tg-emoji emoji-id="6021741116192201252">📩</tg-emoji> <b><i>Текст сообщения:</i></b>
 <blockquote>{text}</blockquote>
 
-<b><i>Будьте осторожны. Проверьте переписку и при необходимости заблокируйте отправителя.</i></b>'''
+<b><i>Будьте осторожны. Проверьте переписку и при необходимости заблокируйте отправителя.</i></b>
+
+{delete_text}'''
     keyboard = InlineKeyboardMarkup(inline_keyboard=[[
         InlineKeyboardButton(
             text="Я ознакомился, спасибо!",
@@ -2046,10 +2055,11 @@ async def check_business_message(message: Message):
                 message.business_connection_id,
                 [message.message_id],
             )
+            deleted = True
         except Exception as error:
             print("Не удалось удалить подозрительное сообщение:", repr(error))
 
-    answer, keyboard = make_business_alert(message, codes, nomer, sources)
+    answer, keyboard = make_business_alert(message, codes, nomer, sources, deleted)
     await message.bot.send_photo(
         connection.user_chat_id,
         BUSINESS_ALERT_IMAGE,
