@@ -16,14 +16,17 @@ import urllib.parse
 import urllib.request
 
 from aiogram import Bot, Dispatcher, F
+from aiogram.exceptions import TelegramNetworkError, TelegramServerError
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.fsm.storage.memory import MemoryStorage
-from aiogram.types import BotCommand, BufferedInputFile, CallbackQuery, FSInputFile, InputMediaPhoto, Message, ReplyKeyboardRemove
+from aiogram.types import BotCommand, BufferedInputFile, BusinessConnection, CallbackQuery, FSInputFile, InlineKeyboardButton, InlineKeyboardMarkup, InputMediaPhoto, Message, ReplyKeyboardRemove
 from dotenv import load_dotenv
 
 from ai_services import analyze_file, analyze_message, analyze_site
+from ai_services import check_local
 from crypto_files import InvalidEncryptedFile, WrongPassword, decrypt_file, encrypt_file
+from prompts import REASONS
 from keyboards import (
     additional_menu,
     get_access_check_keyboard,
@@ -248,7 +251,7 @@ async def save_wait_message(state, message, message_id):
     )
 
 
-@dp.message(F.text == "/start")
+@dp.message(F.text.startswith("/start"))
 async def start(message: Message, state: FSMContext):
     await state.clear()
 
@@ -292,8 +295,24 @@ async def access_checked(callback: CallbackQuery):
 async def set_commands_menu(bot):
     bot_commands = [
         BotCommand(command="/start", description="Запуск бота"),
+        BotCommand(command="/business", description="Подключение к аккаунту"),
     ]
     await bot.set_my_commands(bot_commands)
+
+
+@dp.message(F.text == "/business")
+async def business_help(message: Message):
+    me = await message.bot.get_me()
+    await message.answer(
+        f'''<b>Подключение к аккаунту</b>
+
+Откройте в Telegram <b>Настройки → Telegram Business → Чат-боты</b> и добавьте <code>@{me.username}</code>.
+
+Выберите <b>новые чаты</b> и <b>не контакты</b>. Тогда бот будет проверять сообщения в доступных ему личных чатах и присылать предупреждения сюда.
+
+<i>Никого автоматически не блокирую и от вашего имени не отвечаю.</i>''',
+        parse_mode="HTML",
+    )
 
 
 @dp.message(F.text.in_(ADDITIONAL_MENU_BUTTONS))
@@ -1880,6 +1899,101 @@ def check_phone_info(text):
     return answer, style
 
 
+def check_business_text(text):
+    codes = check_local(text)["reason_codes"]
+    if "no_clear_signs" in codes:
+        return []
+    if "password_code" in codes or "card_data" in codes:
+        return codes
+    if "money_request" in codes and len(codes) >= 2:
+        return codes
+    if "suspicious_link" in codes and "urgency_pressure" in codes:
+        return codes
+    if len(codes) >= 3:
+        return codes
+    return []
+
+
+def get_business_phone(message):
+    if message.contact and message.from_user and message.contact.user_id == message.from_user.id:
+        return clean_phone(message.contact.phone_number)
+    return None
+
+
+def make_business_alert(message, codes, nomer, sources):
+    sender = message.from_user
+    name = safe_text(sender.full_name)
+    cause = "\n".join("• " + safe_text(REASONS[code]) for code in codes[:3])
+    if not cause:
+        cause = "• На номер есть жалобы в открытой базе."
+    phone_text = "+" + nomer if nomer else "Telegram не показывает номер"
+    text = safe_text((message.text or message.caption or "")[:700])
+    if not text:
+        text = "В сообщении нет текста"
+    source_text = "\n".join(
+        f'• <a href="{safe_text(source["url"])}">{safe_text(title)}</a>: {safe_text(source["text"])}'
+        for title, source in sources
+    )
+    if source_text:
+        source_text = "\n<b>Проверка номера:</b>\n" + source_text + "\n"
+    answer = f'''<b>⚠️ Подозрительное личное сообщение</b>
+
+<b>От:</b> {name} (ID: <code>{sender.id}</code>)
+<b>Номер:</b> {safe_text(phone_text)}
+<b>ID сообщения:</b> <code>{message.message_id}</code>
+
+<b>Причины:</b>
+{cause}
+{source_text}
+<b>Текст:</b> {text}
+
+<i>Проверьте переписку и при необходимости заблокируйте отправителя вручную. Это предварительная оценка.</i>'''
+    keyboard = None
+    if sender.username and re.fullmatch(r"[A-Za-z0-9_]{5,32}", sender.username):
+        keyboard = InlineKeyboardMarkup(inline_keyboard=[[
+            InlineKeyboardButton(text="Открыть профиль", url="https://t.me/" + sender.username)
+        ]])
+    return answer, keyboard
+
+
+@dp.business_connection()
+async def business_connected(connection: BusinessConnection, bot: Bot):
+    if connection.is_enabled:
+        await bot.send_message(
+            connection.user_chat_id,
+            "<b>ShieldTools подключён.</b> Буду присылать предупреждения о подозрительных сообщениях из выбранных чатов.",
+            parse_mode="HTML",
+        )
+
+
+@dp.business_message()
+async def check_business_message(message: Message):
+    if not message.business_connection_id or message.chat.type != "private" or not message.from_user:
+        return
+    connection = await message.bot.get_business_connection(message.business_connection_id)
+    sender = message.from_user
+    if not connection.is_enabled or sender.is_bot or sender.id == connection.user.id or message.sender_business_bot:
+        return
+
+    codes = check_business_text(message.text or message.caption or "")
+    nomer = get_business_phone(message)
+    sources = []
+    if nomer:
+        promfo, netrubi = await asyncio.gather(
+            asyncio.to_thread(check_phone_promfo, nomer),
+            asyncio.to_thread(check_phone_netrubi, nomer),
+        )
+        sources = [("Про МФО", promfo), ("Не Бери Трубку", netrubi)]
+    if not codes and not any(source["fraud"] for _, source in sources):
+        return
+
+    answer, keyboard = make_business_alert(message, codes, nomer, sources)
+    await message.bot.send_message(
+        connection.user_chat_id, answer, parse_mode="HTML", reply_markup=keyboard,
+        disable_web_page_preview=True,
+    )
+
+
 
 @dp.message(States.waiting_password)
 async def check_password_message(message: Message, state: FSMContext):
@@ -2359,9 +2473,17 @@ async def choose_mode_message(message: Message):
 
 
 async def main():
-    bot = Bot(token=tg_bot_token)
-    await set_commands_menu(bot)
-    await dp.start_polling(bot)
+    while True:
+        bot = Bot(token=tg_bot_token)
+        try:
+            await set_commands_menu(bot)
+            await dp.start_polling(bot, close_bot_session=False)
+            return
+        except (TelegramNetworkError, TelegramServerError) as error:
+            print("Нет связи с Telegram, повтор через 5 секунд:", error)
+        finally:
+            await bot.session.close()
+        await asyncio.sleep(5)
 
 
 if __name__ == "__main__":

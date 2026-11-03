@@ -71,6 +71,14 @@ You only need one AI provider. If none is configured, message checks fall back t
 
 Do not upload `.env` to GitHub. It may contain private tokens and is already listed in `.gitignore`.
 
+## Telegram Business monitoring
+
+Any Telegram user can connect the bot to their account through Settings → Telegram Business → Chatbots. The bot owner must first enable Secretary Mode for the bot in @BotFather. Choose only new chats and non-contacts in the connection settings to monitor unfamiliar senders. No account login code, API ID or separate process is needed.
+
+When a selected private chat receives a suspicious message, the bot sends a warning to the account owner in the bot chat. It checks the message with simple local rules. A phone number can be checked against the public complaint databases only if the sender explicitly shares their own contact card. The bot does not block senders or reply on behalf of the owner.
+
+Telegram does not expose the sender's account registration date or registered phone number to business bots. Private one-to-one messages do not have a shareable direct message link; the warning includes the message text and a link to the sender's chat when a username exists.
+
 ## Notes
 
 A clean result does not prove that a message, link, or file is safe. Files submitted for scanning are sent to Kaspersky OpenTIP. AI checks send the provided text or scan result to the first configured provider that responds.
