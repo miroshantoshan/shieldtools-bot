@@ -98,6 +98,8 @@ FILE_IMAGE = IMAGE_BASE + "files.png"
 EMAIL_IMAGE = IMAGE_BASE + "email.png"
 CRYPTO_IMAGE = IMAGE_BASE + "crypto.png"
 BUSINESS_ALERT_IMAGE = IMAGE_BASE + "business_alert.png?v=415bbd0"
+BUSINESS_CONNECTED_IMAGE = IMAGE_BASE + "business_connected.png"
+BUSINESS_GUIDE_VIDEO = "https://raw.githubusercontent.com/miroshantoshan/shieldtools-bot/main/videos/business_setup.mp4"
 TWO_IP_API_TOKEN = os.getenv("TWO_IP_API_TOKEN", "")
 GOOGLE_SAFE_BROWSING_API_KEY = os.getenv("GOOGLE_SAFE_BROWSING_API_KEY", "")
 KASPERSKY_OPENTIP_API_KEY = os.getenv("KASPERSKY_OPENTIP_API_KEY", "")
@@ -129,8 +131,7 @@ def get_main_menu_text(user):
 
 <tg-emoji emoji-id="6023622161543993632">🧭</tg-emoji> <b>Выберите нужный раздел в меню ниже, чтобы начать работу.</b>
 
-<tg-emoji emoji-id="6030400221232501136">🤖</tg-emoji> <b>ShieldTools можно подключить к вашему Telegram-аккаунту, чтобы бот определял мошеннические сообщения сразу в реальном времени.</b>
-<a href="https://example.com">Открыть инструкцию по подключению</a>'''
+<tg-emoji emoji-id="6030400221232501136">🤖</tg-emoji> <b>ShieldTools можно подключить к вашему Telegram-аккаунту, чтобы бот определял мошеннические сообщения сразу в реальном времени.</b>'''
 
 async def send_main_photo(message, text, reply_markup=None):
     try:
@@ -138,7 +139,12 @@ async def send_main_photo(message, text, reply_markup=None):
             MAIN_IMAGE,
             caption=text,
             parse_mode="HTML",
-            reply_markup=reply_markup,
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=[[
+                InlineKeyboardButton(
+                    text="Инструкция по подключению",
+                    callback_data="business_guide",
+                )
+            ]]),
         )
     except Exception as error:
         print("Ошибка главной картинки:", repr(error))
@@ -150,8 +156,15 @@ async def send_main_photo(message, text, reply_markup=None):
         await message.answer(
             text,
             parse_mode="HTML",
-            reply_markup=reply_markup,
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=[[
+                InlineKeyboardButton(
+                    text="Инструкция по подключению",
+                    callback_data="business_guide",
+                )
+            ]]),
         )
+    if reply_markup:
+        await message.answer("⁠", reply_markup=reply_markup)
 
 
 async def send_section_photo(message, image, text, reply_markup=None):
@@ -338,6 +351,33 @@ async def business_help(message: Message):
 <i>Никого автоматически не блокирую и от вашего имени не отвечаю.</i>''',
         parse_mode="HTML",
     )
+
+
+@dp.callback_query(F.data == "business_guide")
+async def business_guide(callback: CallbackQuery):
+    await callback.message.answer_video(
+        BUSINESS_GUIDE_VIDEO,
+        caption='''<b><i><tg-emoji emoji-id="6023622161543993632">🧭</tg-emoji> Как подключить ShieldTools к аккаунту</i></b>
+
+1. Откройте свой профиль Telegram и нажмите <b>«Изменить»</b>.
+2. Выберите <b>«Автоматизация чатов»</b> или <b>«Telegram Business → Чат-боты»</b>.
+3. Укажите <code>@olimpnavigator_bot</code> и нажмите <b>«Добавить»</b>.
+4. Разрешите доступ к <b>новым чатам</b> и сообщениям от <b>не контактов</b>.
+5. Разрешите боту <b>читать и удалять все сообщения</b>.
+6. Сохраните настройки.
+
+<b><i>После подключения ShieldTools начнёт проверять новые сообщения в реальном времени.</i></b>''',
+        parse_mode="HTML",
+        supports_streaming=True,
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[[
+            InlineKeyboardButton(text="Я понял!", callback_data="business_guide_understood")
+        ]]),
+    )
+
+
+@dp.callback_query(F.data == "business_guide_understood")
+async def business_guide_understood(callback: CallbackQuery):
+    await callback.message.edit_reply_markup(reply_markup=None)
 
 
 @dp.message(F.text.in_(ADDITIONAL_MENU_BUTTONS))
@@ -2012,9 +2052,14 @@ async def business_connected(connection: BusinessConnection, bot: Bot):
         delete_text = ""
         if not delete_ready:
             delete_text = "\n\nРазрешите боту <b>удалять все сообщения</b>, чтобы подозрительные сообщения удалялись мгновенно."
-        await bot.send_message(
+        await bot.send_photo(
             connection.user_chat_id,
-            "<b>ShieldTools подключён.</b> Буду присылать предупреждения о подозрительных сообщениях из выбранных чатов." + delete_text,
+            BUSINESS_CONNECTED_IMAGE,
+            caption='''<b><i><tg-emoji emoji-id="5237699328843200968">✅</tg-emoji> Всё готово!</i></b>
+
+<tg-emoji emoji-id="6019328362479097179">🛡</tg-emoji> <b>ShieldTools успешно подключён к вашему Telegram-аккаунту.</b>
+
+Теперь бот будет проверять новые сообщения в выбранных чатах и предупреждать о мошенничестве в реальном времени.'''+ delete_text,
             parse_mode="HTML",
         )
 
