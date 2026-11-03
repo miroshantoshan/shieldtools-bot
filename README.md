@@ -80,3 +80,5 @@ Encrypted files use the `.shield` extension. The password is not stored, so a lo
 ## License
 
 Released under the MIT License. See [LICENSE](LICENSE).
+
+Проверка российских номеров использует открытые базы жалоб [Про МФО](https://promfo.ru/proverit-nomer-telefona) и [Не Бери Трубку](https://netrubi.ru/). Результат показывает ссылки на источники; отсутствие жалоб не означает безопасность звонка.

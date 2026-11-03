@@ -40,6 +40,7 @@ from keyboards import (
     get_password_check_keyboard,
     get_password_length_keyboard,
     get_password_menu_keyboard,
+    get_phone_menu_keyboard,
     get_scam_menu_keyboard,
     get_checked_keyboard,
     get_site_menu_keyboard,
@@ -62,6 +63,7 @@ SCAM_BUTTONS = ["Проверка SMS (AI)", "Проверка SMS", "🛡 Пр�
 PASSWORD_BUTTONS = ["Пароли", "🔐 Пароли"]
 DOMAIN_BUTTONS = ["Домены", "🖥 Домены"]
 IP_BUTTONS = ["IP", "📡 IP"]
+PHONE_BUTTONS = ["Проверка номера", "📞 Проверка номера"]
 SITE_BUTTONS = ["Проверка сайта (AI)", "Проверка сайта", "🧭 Проверка сайта"]
 FILE_BUTTONS = ["Проверка файла (AI)", "Проверка файла", "Файлы", "📁 Файлы"]
 EMAIL_BUTTONS = ["Email", "📧 Email"]
@@ -84,6 +86,7 @@ ACCESS_IMAGE = "./images/access.png"
 PASSWORD_IMAGE = "./images/passwords.png"
 DOMAIN_IMAGE = "./images/domains.png"
 IP_IMAGE = "./images/ip.png"
+PHONE_IMAGE = "./images/ip.png"
 SITE_IMAGE = "./images/site.png"
 FILE_IMAGE = "./images/files.png"
 EMAIL_IMAGE = "./images/email.png"
@@ -100,6 +103,7 @@ class States(StatesGroup):
     waiting_domain_age = State()
     waiting_ssl_check = State()
     waiting_ip_check = State()
+    waiting_phone_check = State()
     waiting_site_rkn = State()
     waiting_site_virus = State()
     waiting_file_virus = State()
@@ -403,6 +407,22 @@ async def site_menu(message: Message, state: FSMContext):
     )
 
 
+@dp.message(F.text.in_(PHONE_BUTTONS))
+async def phone_menu(message: Message, state: FSMContext):
+    await state.clear()
+    await send_section_photo(
+        message,
+        PHONE_IMAGE,
+        '''<b><tg-emoji emoji-id="6019279794988915337">📞</tg-emoji> Проверка номера</b>
+
+<i>Проверьте российский номер по открытым базам жалоб.</i>
+
+<i>Отзывы пользователей не доказывают, кто на самом деле звонил.</i>''',
+        get_phone_menu_keyboard(),
+    )
+
+
+
 @dp.message(F.text.in_(FILE_BUTTONS))
 async def files_menu(message: Message, state: FSMContext):
     await state.clear()
@@ -533,6 +553,22 @@ async def site_menu_callback(callback: CallbackQuery, state: FSMContext):
         get_site_menu_keyboard(),
     )
     await callback.answer()
+
+
+@dp.callback_query(F.data == "phone_menu")
+async def phone_menu_callback(callback: CallbackQuery, state: FSMContext):
+    await state.clear()
+    await callback.message.edit_reply_markup(reply_markup=None)
+    await edit_section_photo(
+        callback.message,
+        PHONE_IMAGE,
+        '''<b><tg-emoji emoji-id="6019279794988915337">📞</tg-emoji> Проверка номера</b>
+
+<i>Проверьте российский номер по открытым базам жалоб.</i>''',
+        get_phone_menu_keyboard(),
+    )
+    await callback.answer()
+
 
 
 @dp.callback_query(F.data == "files_menu")
@@ -709,6 +745,23 @@ async def site_rkn(callback: CallbackQuery, state: FSMContext):
     )
     await save_wait_message(state, callback.message, message_id)
     await callback.answer()
+
+
+@dp.callback_query(F.data == "phone_check")
+async def phone_check(callback: CallbackQuery, state: FSMContext):
+    await state.set_state(States.waiting_phone_check)
+    await callback.message.edit_reply_markup(reply_markup=None)
+    message_id = await edit_section_photo(
+        callback.message,
+        PHONE_IMAGE,
+        '''<b><tg-emoji emoji-id="6019279794988915337">📞</tg-emoji> Проверка номера</b>
+
+<i>Отправьте российский номер: <code>+7 900 123-45-67</code> или <code>89001234567</code>.</i>''',
+        get_wait_input_keyboard("phone_menu"),
+    )
+    await save_wait_message(state, callback.message, message_id)
+    await callback.answer()
+
 
 
 @dp.callback_query(F.data == "site_virus")
@@ -1699,6 +1752,135 @@ def check_email_spam_info(text):
 <i>Не получилось выполнить проверку.</i>'''
 
 
+def clean_phone(text):
+    text = text.strip()
+    if not re.fullmatch(r"\+?[0-9 ()-]+", text):
+        return None
+
+    nomer = re.sub(r"\D", "", text)
+    if len(nomer) == 10:
+        nomer = "7" + nomer
+    elif len(nomer) == 11 and nomer[0] == "8":
+        nomer = "7" + nomer[1:]
+
+    if len(nomer) != 11 or nomer[0] != "7":
+        return None
+    return nomer
+
+
+
+def phone_count(number, one, few, many):
+    if number % 100 in (11, 12, 13, 14):
+        return many
+    if number % 10 == 1:
+        return one
+    if number % 10 in (2, 3, 4):
+        return few
+    return many
+
+
+
+def check_phone_promfo(nomer):
+    url = "https://promfo.ru/chernyy-spisok/" + nomer
+    try:
+        request = urllib.request.Request(url, headers={"User-Agent": "ShieldTools/1.0"})
+        with urllib.request.urlopen(request, timeout=8) as response:
+            page = response.read().decode("utf-8", "replace")
+    except urllib.error.HTTPError as error:
+        if error.code == 404:
+            return {"url": url, "text": "запись не найдена", "fraud": False, "ok": True}
+        return {"url": url, "text": "источник недоступен", "fraud": False, "ok": False}
+    except Exception:
+        return {"url": url, "text": "источник недоступен", "fraud": False, "ok": False}
+
+    opisanie = re.search(r'<meta name="description" content="([^"]+)"', page)
+    if not opisanie:
+        return {"url": url, "text": "не удалось прочитать ответ", "fraud": False, "ok": False}
+
+    opisanie = html.unescape(opisanie.group(1))
+    count = re.search(r":\s*(\d+)\s+жалоб", opisanie)
+    category = re.search(r"категория «([^»]+)»", opisanie)
+    if not count or not category:
+        return {"url": url, "text": "не удалось прочитать ответ", "fraud": False, "ok": False}
+
+    kategoriya = category.group(1)
+    complaints = int(count.group(1))
+    return {
+        "url": url,
+        "text": str(complaints) + " " + phone_count(complaints, "жалоба", "жалобы", "жалоб") + "; категория: " + kategoriya,
+        "fraud": "мошен" in kategoriya.lower(),
+        "ok": True,
+    }
+
+
+
+def check_phone_netrubi(nomer):
+    url = "https://netrubi.ru/nomer/" + nomer[1:]
+    try:
+        request = urllib.request.Request(url, headers={"User-Agent": "ShieldTools/1.0"})
+        with urllib.request.urlopen(request, timeout=8) as response:
+            page = response.read().decode("utf-8", "replace")
+    except Exception:
+        return {"url": url, "text": "источник недоступен", "fraud": False, "ok": False}
+
+    if "отсутствуют отзывы" in page:
+        return {"url": url, "text": "отзывов нет", "fraud": False, "ok": True}
+
+    count = re.search(r'У номера телефона[^<]+<b>(\d+)&nbsp;отзыв', page)
+    if not count:
+        return {"url": url, "text": "не удалось прочитать ответ", "fraud": False, "ok": False}
+
+    categories = re.search(r'<p class="stat-title">Категории:</p>(.*?)</div></div>', page, re.DOTALL)
+    fraud_count = 0
+    if categories:
+        fraud = re.search(r'<span>Мошенники</span>\s*<span class="value"><b>(\d+)</b>', categories.group(1))
+        if fraud:
+            fraud_count = int(fraud.group(1))
+
+    reviews = int(count.group(1))
+    opisanie = str(reviews) + " " + phone_count(reviews, "отзыв", "отзыва", "отзывов")
+    if fraud_count:
+        opisanie += "; о мошенничестве: " + str(fraud_count)
+    return {"url": url, "text": opisanie, "fraud": fraud_count > 0, "ok": True}
+
+
+
+def check_phone_info(text):
+    nomer = clean_phone(text)
+    if not nomer:
+        answer = '''<b><tg-emoji emoji-id="6019279794988915337">📞</tg-emoji> Неверный номер</b>
+
+<i>Отправьте российский номер из 10 цифр или в формате <code>+7 900 123-45-67</code>.</i>'''
+        return answer, "danger"
+
+    promfo = check_phone_promfo(nomer)
+    netrubi = check_phone_netrubi(nomer)
+    sources = [promfo, netrubi]
+
+    if any(source["fraud"] for source in sources):
+        verdict = "Есть жалобы на мошенничество"
+        style = "danger"
+    elif any(source["ok"] for source in sources):
+        verdict = "В доступных источниках жалоб на мошенничество не найдено"
+        style = "success"
+    else:
+        verdict = "Проверка сейчас недоступна"
+        style = "primary"
+
+    answer = f'''<b><tg-emoji emoji-id="6019279794988915337">📞</tg-emoji> Проверка номера</b>
+
+<b>Номер:</b> <code>+{nomer}</code>
+<b>Вердикт:</b> <b>{verdict}</b>
+
+<b>Источники:</b>
+• <a href="{promfo["url"]}">Про МФО</a>: {safe_text(promfo["text"])}
+• <a href="{netrubi["url"]}">Не Бери Трубку</a>: {safe_text(netrubi["text"])}
+
+<i>Данные основаны на отзывах пользователей. Отсутствие жалоб не означает, что звонок безопасен.</i>'''
+    return answer, style
+
+
+
 @dp.message(States.waiting_password)
 async def check_password_message(message: Message, state: FSMContext):
     await state.clear()
@@ -1778,6 +1960,19 @@ async def check_site_rkn_message(message: Message, state: FSMContext):
         answer,
         get_check_again_keyboard("site_rkn", "site_menu", style),
     )
+
+
+@dp.message(States.waiting_phone_check)
+async def check_phone_message(message: Message, state: FSMContext):
+    await state.clear()
+    answer, style = await asyncio.to_thread(check_phone_info, message.text or "")
+    await send_section_photo(
+        message,
+        PHONE_IMAGE,
+        answer,
+        get_check_again_keyboard("phone_check", "phone_menu", style),
+    )
+
 
 
 @dp.message(States.waiting_site_virus)

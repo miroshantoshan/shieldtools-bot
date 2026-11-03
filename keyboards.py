@@ -11,6 +11,9 @@ menu = ReplyKeyboardMarkup(
             KeyboardButton(text="Проверка файла", icon_custom_emoji_id="6021375494216226506"),
             KeyboardButton(text="Доп. функции", icon_custom_emoji_id="6023566962624306038"),
         ],
+        [
+            KeyboardButton(text="Проверка номера", icon_custom_emoji_id="6019279794988915337"),
+        ],
     ],
     resize_keyboard=True,
 )
@@ -508,6 +511,27 @@ def get_checked_keyboard(text="✅"):
                     text=text,
                     callback_data="checked",
                     style="success",
+                ),
+            ],
+        ],
+    )
+
+
+def get_phone_menu_keyboard():
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text="Проверить номер",
+                    callback_data="phone_check",
+                    style="primary",
+                ),
+            ],
+            [
+                InlineKeyboardButton(
+                    text="Назад",
+                    callback_data="back_to_menu",
+                    icon_custom_emoji_id="5805509901048356965",
                 ),
             ],
         ],
