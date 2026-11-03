@@ -164,7 +164,11 @@ async def send_main_photo(message, text, reply_markup=None):
             ]]),
         )
     if reply_markup:
-        await message.answer("⁠", reply_markup=reply_markup)
+        keyboard_message = await message.answer("⁠", reply_markup=reply_markup)
+        try:
+            await keyboard_message.delete()
+        except Exception:
+            pass
 
 
 async def send_section_photo(message, image, text, reply_markup=None):
