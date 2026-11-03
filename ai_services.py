@@ -215,6 +215,16 @@ def ask_groq(text, system_prompt=SYSTEM_PROMPT, task="Проверь это со
     )
 
 
+def get_providers():
+    return [
+        ("Gemini", ask_gemini),
+        ("Groq", ask_groq),
+        ("OpenRouter", ask_openrouter),
+        ("Mistral", ask_mistral),
+        ("Hugging Face", ask_huggingface),
+    ]
+
+
 def check_local(text):
     text = text.lower()
     reason_codes = []
@@ -230,15 +240,7 @@ def check_local(text):
 
 
 def analyze_message(text):
-    providers = [
-        ("Gemini", ask_gemini),
-        ("Groq", ask_groq),
-        ("OpenRouter", ask_openrouter),
-        ("Mistral", ask_mistral),
-        ("Hugging Face", ask_huggingface),
-    ]
-
-    for name, function in providers:
+    for name, function in get_providers():
         try:
             data = function(text)
             return make_answer(data)
@@ -335,15 +337,7 @@ def analyze_site(url, reputation_status="unknown", reputation_text="Базы у�
     text = f'''Ссылка: {url}
 Результат репутационных баз: {reputation_text}.'''
     task = "Проверь ссылку и домен на вредоносность:"
-    providers = [
-        ("Gemini", ask_gemini),
-        ("Groq", ask_groq),
-        ("OpenRouter", ask_openrouter),
-        ("Mistral", ask_mistral),
-        ("Hugging Face", ask_huggingface),
-    ]
-
-    for name, function in providers:
+    for name, function in get_providers():
         try:
             data = function(text, SITE_SYSTEM_PROMPT, task)
             source = f"ИИ ({name}); {reputation_text}"
@@ -455,15 +449,7 @@ MIME-тип: {file_data.get("mime_type", "не найдено")}
 Статус Kaspersky: {file_data.get("status", "не найдено")}
 Статус файла: {file_data.get("file_status", "не найдено")}'''
     task = "Объясни результат антивирусной проверки файла:"
-    providers = [
-        ("Gemini", ask_gemini),
-        ("Groq", ask_groq),
-        ("OpenRouter", ask_openrouter),
-        ("Mistral", ask_mistral),
-        ("Hugging Face", ask_huggingface),
-    ]
-
-    for name, function in providers:
+    for name, function in get_providers():
         try:
             data = function(report_text, FILE_SYSTEM_PROMPT, task)
             return make_file_answer(data, file_data, reputation_status, f"ИИ ({name}) + Kaspersky OpenTIP")

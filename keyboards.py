@@ -1,38 +1,25 @@
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, KeyboardButton, ReplyKeyboardMarkup
 
 
-menu = ReplyKeyboardMarkup(
-    keyboard=[
-        [
-            KeyboardButton(text="Проверка SMS", icon_custom_emoji_id="5891243564309942507"),
-            KeyboardButton(text="Проверка сайта", icon_custom_emoji_id="6019245310696495518"),
-        ],
-        [
-            KeyboardButton(text="Проверка файла", icon_custom_emoji_id="6021375494216226506"),
-            KeyboardButton(text="Доп. функции", icon_custom_emoji_id="6023566962624306038"),
-        ],
-        [
-            KeyboardButton(text="Проверка номера", icon_custom_emoji_id="6019279794988915337"),
-        ],
+MAIN_MENU_ROWS = [
+    [
+        KeyboardButton(text="Проверка SMS", icon_custom_emoji_id="5891243564309942507"),
+        KeyboardButton(text="Проверка сайта", icon_custom_emoji_id="6019245310696495518"),
     ],
-    resize_keyboard=True,
-    is_persistent=True,
-)
+    [
+        KeyboardButton(text="Проверка файла", icon_custom_emoji_id="6021375494216226506"),
+        KeyboardButton(text="Доп. функции", icon_custom_emoji_id="6023566962624306038"),
+    ],
+    [KeyboardButton(text="Проверка номера", icon_custom_emoji_id="6019279794988915337")],
+]
+
+
+menu = ReplyKeyboardMarkup(keyboard=MAIN_MENU_ROWS, resize_keyboard=True, is_persistent=True)
 
 
 menu_with_business = ReplyKeyboardMarkup(
     keyboard=[
-        [
-            KeyboardButton(text="Проверка SMS", icon_custom_emoji_id="5891243564309942507"),
-            KeyboardButton(text="Проверка сайта", icon_custom_emoji_id="6019245310696495518"),
-        ],
-        [
-            KeyboardButton(text="Проверка файла", icon_custom_emoji_id="6021375494216226506"),
-            KeyboardButton(text="Доп. функции", icon_custom_emoji_id="6023566962624306038"),
-        ],
-        [
-            KeyboardButton(text="Проверка номера", icon_custom_emoji_id="6019279794988915337"),
-        ],
+        *MAIN_MENU_ROWS,
         [
             KeyboardButton(
                 text="Подключить бота к аккаунту",

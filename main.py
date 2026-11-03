@@ -24,8 +24,7 @@ from aiogram.types import BotCommand, BufferedInputFile, BusinessConnection, Cal
 from aiogram.utils.callback_answer import CallbackAnswerMiddleware
 from dotenv import load_dotenv
 
-from ai_services import analyze_file, analyze_message, analyze_site
-from ai_services import check_local
+from ai_services import analyze_file, analyze_message, analyze_site, check_local
 from crypto_files import InvalidEncryptedFile, WrongPassword, decrypt_file, encrypt_file
 from prompts import REASONS
 from keyboards import (
@@ -154,9 +153,7 @@ def is_business_connected(user_id):
 
 
 def get_main_keyboard(user_id):
-    if is_business_connected(user_id):
-        return menu
-    return menu_with_business
+    return menu if is_business_connected(user_id) else menu_with_business
 
 
 class States(StatesGroup):
@@ -2057,24 +2054,41 @@ def get_business_phone(message):
     return None
 
 
+def get_business_phone_text(nomer, sources):
+    if not nomer:
+        return "Номер скрыт"
+    if any(source["fraud"] for _, source in sources):
+        return "+" + nomer + " — найден в спам-базах"
+    if any(source["ok"] for _, source in sources):
+        return "+" + nomer + " — не найден в спам-базах"
+    return "+" + nomer + " — не удалось проверить"
+
+
+def get_business_sender(sender):
+    if sender.username and re.fullmatch(r"[A-Za-z0-9_]{5,32}", sender.username):
+        return f'<a href="https://t.me/{sender.username}">@{sender.username}</a>'
+    return f'<a href="tg://user?id={sender.id}">{safe_text(sender.full_name)}</a>'
+
+
+async def delete_business_message(message):
+    try:
+        await message.bot.delete_business_messages(
+            message.business_connection_id,
+            [message.message_id],
+        )
+        return True
+    except Exception as error:
+        print("Не удалось удалить подозрительное сообщение:", repr(error))
+        return False
+
+
 def make_business_alert(message, codes, nomer, sources, deleted):
     sender = message.from_user
-    name = safe_text(sender.full_name)
-    if sender.username and re.fullmatch(r"[A-Za-z0-9_]{5,32}", sender.username):
-        sender_text = f'<a href="https://t.me/{sender.username}">@{sender.username}</a>'
-    else:
-        sender_text = f'<a href="tg://user?id={sender.id}">{name}</a>'
+    sender_text = get_business_sender(sender)
     cause = "\n".join("• " + safe_text(REASONS[code]) for code in codes[:2])
     if not cause:
         cause = "• На номер есть жалобы в открытой базе."
-    if not nomer:
-        phone_text = "Номер скрыт"
-    elif any(source["fraud"] for _, source in sources):
-        phone_text = "+" + nomer + " — найден в спам-базах"
-    elif any(source["ok"] for _, source in sources):
-        phone_text = "+" + nomer + " — не найден в спам-базах"
-    else:
-        phone_text = "+" + nomer + " — не удалось проверить"
+    phone_text = get_business_phone_text(nomer, sources)
     text = safe_text((message.text or message.caption or "")[:300])
     if not text:
         text = "В сообщении нет текста"
@@ -2156,16 +2170,7 @@ async def check_business_message(message: Message):
         return
 
     codes = check_business_text(message.text or message.caption or "")
-    deleted = False
-    if codes:
-        try:
-            await message.bot.delete_business_messages(
-                message.business_connection_id,
-                [message.message_id],
-            )
-            deleted = True
-        except Exception as error:
-            print("Не удалось удалить подозрительное сообщение:", repr(error))
+    deleted = await delete_business_message(message) if codes else False
     nomer = get_business_phone(message)
     sources = []
     if nomer:
@@ -2177,14 +2182,7 @@ async def check_business_message(message: Message):
     if not codes and not any(source["fraud"] for _, source in sources):
         return
     if not deleted:
-        try:
-            await message.bot.delete_business_messages(
-                message.business_connection_id,
-                [message.message_id],
-            )
-            deleted = True
-        except Exception as error:
-            print("Не удалось удалить подозрительное сообщение:", repr(error))
+        deleted = await delete_business_message(message)
 
     answer, keyboard = make_business_alert(message, codes, nomer, sources, deleted)
     await message.bot.send_photo(
