@@ -63,7 +63,6 @@ tg_bot_token = os.getenv("TG_BOT_TOKEN", "")
 dp = Dispatcher(storage=MemoryStorage())
 dp.callback_query.middleware(CallbackAnswerMiddleware(pre=True))
 EASTER_CLICKS = {}
-BUSINESS_ALERTS = {}
 IMAGE_BASE = "https://raw.githubusercontent.com/miroshantoshan/shieldtools-bot/main/images/"
 
 SCAM_BUTTONS = ["Проверка SMS (AI)", "Проверка SMS", "🛡 Проверка SMS"]
@@ -331,7 +330,7 @@ async def business_help(message: Message):
 
 Выберите <b>новые чаты</b> и <b>не контакты</b>. Тогда бот будет проверять сообщения в доступных ему личных чатах и присылать предупреждения сюда.
 
-Разрешите боту <b>удалять все сообщения</b>, чтобы кнопка под предупреждением могла удалить подозрительное сообщение из диалога.
+Разрешите боту <b>удалять все сообщения</b>, чтобы подозрительные сообщения мгновенно удалялись из диалога.
 
 <i>Никого автоматически не блокирую и от вашего имени не отвечаю.</i>''',
         parse_mode="HTML",
@@ -1943,7 +1942,7 @@ def get_business_phone(message):
     return None
 
 
-def make_business_alert(message, codes, nomer, sources, token):
+def make_business_alert(message, codes, nomer, sources):
     sender = message.from_user
     name = safe_text(sender.full_name)
     if sender.username and re.fullmatch(r"[A-Za-z0-9_]{5,32}", sender.username):
@@ -1970,7 +1969,7 @@ def make_business_alert(message, codes, nomer, sources, token):
     )
     if source_text:
         source_text = "\n<b>Проверка номера:</b>\n" + source_text + "\n"
-    answer = f'''<b><i><tg-emoji emoji-id="5276240711795107620">⚠️</tg-emoji> Новое подозрительное сообщение</i></b>
+    answer = f'''<b><i><tg-emoji emoji-id="5219805369806629055">🛡</tg-emoji> Новое подозрительное сообщение</i></b>
 
 <tg-emoji emoji-id="6023985511482268644">👤</tg-emoji> <b>Отправитель:</b> {sender_text}
 <tg-emoji emoji-id="6019279794988915337">📞</tg-emoji> <b>Номер:</b> <b><i>{safe_text(phone_text)}</i></b>
@@ -1985,28 +1984,15 @@ def make_business_alert(message, codes, nomer, sources, token):
     keyboard = InlineKeyboardMarkup(inline_keyboard=[[
         InlineKeyboardButton(
             text="Я ознакомился, спасибо!",
-            callback_data="business_alert_read:" + token,
-            style="danger",
+            callback_data="business_alert_read",
+            style="primary",
         )
     ]])
     return answer, keyboard
 
 
-@dp.callback_query(F.data.startswith("business_alert_read:"))
+@dp.callback_query(F.data == "business_alert_read")
 async def business_alert_read(callback: CallbackQuery):
-    token = callback.data.split(":", 1)[1]
-    alert = BUSINESS_ALERTS.get(token)
-    if not alert or alert[2] != callback.from_user.id:
-        return
-    try:
-        await callback.bot.delete_business_messages(alert[0], [alert[1]])
-    except Exception:
-        await callback.message.answer(
-            "<b>Не получилось удалить сообщение.</b> Разрешите ShieldTools удалять все сообщения в настройках подключённого бота.",
-            parse_mode="HTML",
-        )
-        return
-    BUSINESS_ALERTS.pop(token, None)
     await callback.message.edit_reply_markup(reply_markup=None)
 
 
@@ -2016,7 +2002,7 @@ async def business_connected(connection: BusinessConnection, bot: Bot):
         delete_ready = connection.rights and connection.rights.can_delete_all_messages
         delete_text = ""
         if not delete_ready:
-            delete_text = "\n\nРазрешите боту <b>удалять все сообщения</b>, чтобы работала кнопка удаления подозрительного сообщения."
+            delete_text = "\n\nРазрешите боту <b>удалять все сообщения</b>, чтобы подозрительные сообщения удалялись мгновенно."
         await bot.send_message(
             connection.user_chat_id,
             "<b>ShieldTools подключён.</b> Буду присылать предупреждения о подозрительных сообщениях из выбранных чатов." + delete_text,
@@ -2034,6 +2020,16 @@ async def check_business_message(message: Message):
         return
 
     codes = check_business_text(message.text or message.caption or "")
+    deleted = False
+    if codes:
+        try:
+            await message.bot.delete_business_messages(
+                message.business_connection_id,
+                [message.message_id],
+            )
+            deleted = True
+        except Exception as error:
+            print("Не удалось удалить подозрительное сообщение:", repr(error))
     nomer = get_business_phone(message)
     sources = []
     if nomer:
@@ -2044,16 +2040,16 @@ async def check_business_message(message: Message):
         sources = [("Про МФО", promfo), ("Не Бери Трубку", netrubi)]
     if not codes and not any(source["fraud"] for _, source in sources):
         return
+    if not deleted:
+        try:
+            await message.bot.delete_business_messages(
+                message.business_connection_id,
+                [message.message_id],
+            )
+        except Exception as error:
+            print("Не удалось удалить подозрительное сообщение:", repr(error))
 
-    token = secrets.token_hex(6)
-    BUSINESS_ALERTS[token] = (
-        message.business_connection_id,
-        message.message_id,
-        connection.user.id,
-    )
-    if len(BUSINESS_ALERTS) > 1000:
-        BUSINESS_ALERTS.pop(next(iter(BUSINESS_ALERTS)))
-    answer, keyboard = make_business_alert(message, codes, nomer, sources, token)
+    answer, keyboard = make_business_alert(message, codes, nomer, sources)
     await message.bot.send_photo(
         connection.user_chat_id,
         BUSINESS_ALERT_IMAGE,
