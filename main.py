@@ -97,6 +97,7 @@ SITE_IMAGE = IMAGE_BASE + "site.png"
 FILE_IMAGE = IMAGE_BASE + "files.png"
 EMAIL_IMAGE = IMAGE_BASE + "email.png"
 CRYPTO_IMAGE = IMAGE_BASE + "crypto.png"
+BUSINESS_ALERT_IMAGE = IMAGE_BASE + "business_alert.png"
 TWO_IP_API_TOKEN = os.getenv("TWO_IP_API_TOKEN", "")
 GOOGLE_SAFE_BROWSING_API_KEY = os.getenv("GOOGLE_SAFE_BROWSING_API_KEY", "")
 KASPERSKY_OPENTIP_API_KEY = os.getenv("KASPERSKY_OPENTIP_API_KEY", "")
@@ -1942,11 +1943,15 @@ def get_business_phone(message):
 def make_business_alert(message, codes, nomer, sources):
     sender = message.from_user
     name = safe_text(sender.full_name)
-    cause = "\n".join("• " + safe_text(REASONS[code]) for code in codes[:3])
+    if sender.username and re.fullmatch(r"[A-Za-z0-9_]{5,32}", sender.username):
+        sender_text = f'<a href="https://t.me/{sender.username}">@{sender.username}</a>'
+    else:
+        sender_text = f'<a href="tg://user?id={sender.id}">{name}</a>'
+    cause = "\n".join("• " + safe_text(REASONS[code]) for code in codes[:2])
     if not cause:
         cause = "• На номер есть жалобы в открытой базе."
     phone_text = "+" + nomer if nomer else "Telegram не показывает номер"
-    text = safe_text((message.text or message.caption or "")[:700])
+    text = safe_text((message.text or message.caption or "")[:300])
     if not text:
         text = "В сообщении нет текста"
     source_text = "\n".join(
@@ -1955,24 +1960,32 @@ def make_business_alert(message, codes, nomer, sources):
     )
     if source_text:
         source_text = "\n<b>Проверка номера:</b>\n" + source_text + "\n"
-    answer = f'''<b>⚠️ Подозрительное личное сообщение</b>
+    answer = f'''<b><i><tg-emoji emoji-id="5276240711795107620">⚠️</tg-emoji> Новое подозрительное сообщение</i></b>
 
-<b>От:</b> {name} (ID: <code>{sender.id}</code>)
-<b>Номер:</b> {safe_text(phone_text)}
-<b>ID сообщения:</b> <code>{message.message_id}</code>
+<tg-emoji emoji-id="6023985511482268644">👤</tg-emoji> <b>Отправитель:</b> {sender_text}
+<tg-emoji emoji-id="6019279794988915337">📞</tg-emoji> <b>Номер:</b> <code>{safe_text(phone_text)}</code>
 
-<b>Причины:</b>
+<tg-emoji emoji-id="6021451978993834164">🔎</tg-emoji> <b><i>Почему сообщение подозрительное:</i></b>
 {cause}
 {source_text}
-<b>Текст:</b> {text}
+<tg-emoji emoji-id="6021741116192201252">📩</tg-emoji> <b><i>Текст сообщения:</i></b>
+{text}
 
-<i>Проверьте переписку и при необходимости заблокируйте отправителя вручную. Это предварительная оценка.</i>'''
-    keyboard = None
-    if sender.username and re.fullmatch(r"[A-Za-z0-9_]{5,32}", sender.username):
-        keyboard = InlineKeyboardMarkup(inline_keyboard=[[
-            InlineKeyboardButton(text="Открыть профиль", url="https://t.me/" + sender.username)
-        ]])
+<b><i>Будьте осторожны. Проверьте переписку и при необходимости заблокируйте отправителя.</i></b>'''
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[[
+        InlineKeyboardButton(
+            text="Я ознакомился, спасибо!",
+            callback_data="business_alert_read",
+            style="danger",
+            icon_custom_emoji_id="5237699328843200968",
+        )
+    ]])
     return answer, keyboard
+
+
+@dp.callback_query(F.data == "business_alert_read")
+async def business_alert_read(callback: CallbackQuery):
+    await callback.message.delete()
 
 
 @dp.business_connection()
@@ -2007,9 +2020,12 @@ async def check_business_message(message: Message):
         return
 
     answer, keyboard = make_business_alert(message, codes, nomer, sources)
-    await message.bot.send_message(
-        connection.user_chat_id, answer, parse_mode="HTML", reply_markup=keyboard,
-        disable_web_page_preview=True,
+    await message.bot.send_photo(
+        connection.user_chat_id,
+        BUSINESS_ALERT_IMAGE,
+        caption=answer,
+        parse_mode="HTML",
+        reply_markup=keyboard,
     )
 
 
