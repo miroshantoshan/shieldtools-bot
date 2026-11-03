@@ -20,7 +20,8 @@ from aiogram.exceptions import TelegramNetworkError, TelegramServerError
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.fsm.storage.memory import MemoryStorage
-from aiogram.types import BotCommand, BufferedInputFile, BusinessConnection, CallbackQuery, FSInputFile, InlineKeyboardButton, InlineKeyboardMarkup, InputMediaPhoto, Message, ReplyKeyboardRemove
+from aiogram.types import BotCommand, BufferedInputFile, BusinessConnection, CallbackQuery, ErrorEvent, InlineKeyboardButton, InlineKeyboardMarkup, InputMediaPhoto, Message, ReplyKeyboardRemove
+from aiogram.utils.callback_answer import CallbackAnswerMiddleware
 from dotenv import load_dotenv
 
 from ai_services import analyze_file, analyze_message, analyze_site
@@ -60,7 +61,9 @@ load_dotenv()
 
 tg_bot_token = os.getenv("TG_BOT_TOKEN", "")
 dp = Dispatcher(storage=MemoryStorage())
+dp.callback_query.middleware(CallbackAnswerMiddleware(pre=True))
 EASTER_CLICKS = {}
+IMAGE_BASE = "https://raw.githubusercontent.com/miroshantoshan/shieldtools-bot/main/images/"
 
 SCAM_BUTTONS = ["Проверка SMS (AI)", "Проверка SMS", "🛡 Проверка SMS"]
 PASSWORD_BUTTONS = ["Пароли", "🔐 Пароли"]
@@ -83,17 +86,17 @@ SCAM_WAIT_TEXT = '''<tg-emoji emoji-id="5877396173135811032">⌨</tg-emoji> <b>�
 
 <i>Я проверю его и покажу возможные признаки угрозы.</i>'''
 
-MAIN_IMAGE = "./images/main.png"
-SCAM_IMAGE = "./images/scam.png"
-ACCESS_IMAGE = "./images/access.png"
-PASSWORD_IMAGE = "./images/passwords.png"
-DOMAIN_IMAGE = "./images/domains.png"
-IP_IMAGE = "./images/ip.png"
-PHONE_IMAGE = "./images/ip.png"
-SITE_IMAGE = "./images/site.png"
-FILE_IMAGE = "./images/files.png"
-EMAIL_IMAGE = "./images/email.png"
-CRYPTO_IMAGE = "./images/crypto.png"
+MAIN_IMAGE = IMAGE_BASE + "main.png"
+SCAM_IMAGE = IMAGE_BASE + "scam.png"
+ACCESS_IMAGE = IMAGE_BASE + "access.png"
+PASSWORD_IMAGE = IMAGE_BASE + "passwords.png"
+DOMAIN_IMAGE = IMAGE_BASE + "domains.png"
+IP_IMAGE = IMAGE_BASE + "ip.png"
+PHONE_IMAGE = IMAGE_BASE + "ip.png"
+SITE_IMAGE = IMAGE_BASE + "site.png"
+FILE_IMAGE = IMAGE_BASE + "files.png"
+EMAIL_IMAGE = IMAGE_BASE + "email.png"
+CRYPTO_IMAGE = IMAGE_BASE + "crypto.png"
 TWO_IP_API_TOKEN = os.getenv("TWO_IP_API_TOKEN", "")
 GOOGLE_SAFE_BROWSING_API_KEY = os.getenv("GOOGLE_SAFE_BROWSING_API_KEY", "")
 KASPERSKY_OPENTIP_API_KEY = os.getenv("KASPERSKY_OPENTIP_API_KEY", "")
@@ -128,16 +131,17 @@ def get_main_menu_text(user):
 async def send_main_photo(message, text, reply_markup=None):
     try:
         await message.answer_photo(
-            FSInputFile(MAIN_IMAGE),
+            MAIN_IMAGE,
             caption=text,
             parse_mode="HTML",
             reply_markup=reply_markup,
         )
-    except Exception:
+    except Exception as error:
+        print("Ошибка главной картинки:", repr(error))
         try:
-            await message.answer_photo(FSInputFile(MAIN_IMAGE))
-        except Exception:
-            pass
+            await message.answer_photo(MAIN_IMAGE)
+        except Exception as photo_error:
+            print("Ошибка отправки главной картинки:", repr(photo_error))
 
         await message.answer(
             text,
@@ -149,13 +153,18 @@ async def send_main_photo(message, text, reply_markup=None):
 async def send_section_photo(message, image, text, reply_markup=None):
     try:
         sent_message = await message.answer_photo(
-            FSInputFile(image),
+            image,
             caption=text,
             parse_mode="HTML",
             reply_markup=reply_markup,
         )
         return sent_message.message_id
-    except Exception:
+    except Exception as error:
+        print("Ошибка картинки раздела", image, repr(error))
+        try:
+            await message.answer_photo(image)
+        except Exception as photo_error:
+            print("Ошибка отправки картинки раздела", image, repr(photo_error))
         sent_message = await message.answer(
             text,
             parse_mode="HTML",
@@ -168,14 +177,15 @@ async def edit_section_photo(message, image, text, reply_markup=None):
     try:
         await message.edit_media(
             InputMediaPhoto(
-                media=FSInputFile(image),
+                media=image,
                 caption=text,
                 parse_mode="HTML",
             ),
             reply_markup=reply_markup,
         )
         return message.message_id
-    except Exception:
+    except Exception as error:
+        print("Ошибка изменения картинки", image, repr(error))
         try:
             await message.edit_caption(
                 caption=text,
@@ -184,13 +194,22 @@ async def edit_section_photo(message, image, text, reply_markup=None):
             )
             return message.message_id
         except Exception:
-            sent_message = await message.answer_photo(
-                FSInputFile(image),
-                caption=text,
+            try:
+                await message.answer_photo(image)
+            except Exception as photo_error:
+                print("Ошибка новой картинки", image, repr(photo_error))
+            sent_message = await message.answer(
+                text,
                 parse_mode="HTML",
                 reply_markup=reply_markup,
             )
             return sent_message.message_id
+
+
+@dp.errors()
+async def bot_error(event: ErrorEvent):
+    print("Ошибка обработчика:", repr(event.exception))
+    return True
 
 
 def get_file_analysis_text(dots):

@@ -24,6 +24,9 @@ from prompts import (
 load_dotenv()
 
 
+AI_TIMEOUT = 10
+
+
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY", "")
 GROQ_API_KEY = os.getenv("GROQ_API_KEY", "")
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
@@ -123,7 +126,7 @@ def send_ai_request(url, api_key, data, extra_headers=None):
         method="POST",
     )
 
-    with urllib.request.urlopen(request, timeout=60) as response:
+    with urllib.request.urlopen(request, timeout=AI_TIMEOUT) as response:
         result = json.loads(response.read().decode("utf-8"))
 
     model_text = result["choices"][0]["message"]["content"]
@@ -175,7 +178,7 @@ def ask_gemini(text, system_prompt=SYSTEM_PROMPT, task="Проверь это с
         method="POST",
     )
 
-    with urllib.request.urlopen(request, timeout=60) as response:
+    with urllib.request.urlopen(request, timeout=AI_TIMEOUT) as response:
         result = json.loads(response.read().decode("utf-8"))
 
     model_text = result["candidates"][0]["content"]["parts"][0]["text"]
@@ -228,11 +231,11 @@ def check_local(text):
 
 def analyze_message(text):
     providers = [
-        ("OpenRouter", ask_openrouter),
         ("Gemini", ask_gemini),
+        ("Groq", ask_groq),
+        ("OpenRouter", ask_openrouter),
         ("Mistral", ask_mistral),
         ("Hugging Face", ask_huggingface),
-        ("Groq", ask_groq),
     ]
 
     for name, function in providers:
@@ -333,11 +336,11 @@ def analyze_site(url, reputation_status="unknown", reputation_text="Базы у�
 Результат репутационных баз: {reputation_text}.'''
     task = "Проверь ссылку и домен на вредоносность:"
     providers = [
-        ("OpenRouter", ask_openrouter),
         ("Gemini", ask_gemini),
+        ("Groq", ask_groq),
+        ("OpenRouter", ask_openrouter),
         ("Mistral", ask_mistral),
         ("Hugging Face", ask_huggingface),
-        ("Groq", ask_groq),
     ]
 
     for name, function in providers:
@@ -453,11 +456,11 @@ MIME-тип: {file_data.get("mime_type", "не найдено")}
 Статус файла: {file_data.get("file_status", "не найдено")}'''
     task = "Объясни результат антивирусной проверки файла:"
     providers = [
-        ("OpenRouter", ask_openrouter),
         ("Gemini", ask_gemini),
+        ("Groq", ask_groq),
+        ("OpenRouter", ask_openrouter),
         ("Mistral", ask_mistral),
         ("Hugging Face", ask_huggingface),
-        ("Groq", ask_groq),
     ]
 
     for name, function in providers:
