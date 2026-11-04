@@ -1,25 +1,73 @@
 # ShieldTools
 
-ShieldTools is a Russian-language Telegram bot for quick security checks.
+ShieldTools — русскоязычный Telegram-бот с инструментами информационной безопасности и защитой личных чатов через Telegram Business.
 
-It can:
+## Возможности
 
-- check messages for common scam patterns
-- generate passwords and rate their strength
-- look up DNS records, domain age, and SSL certificate details
-- show location and provider information for an IP address
-- check links with Google Safe Browsing and Kaspersky OpenTIP
-- scan files with Kaspersky OpenTIP
-- check email addresses with DNS and Stop Forum Spam
-- encrypt and decrypt files with AES-256-GCM
+- проверка SMS и сообщений на мошенничество;
+- смысловой анализ текста через ИИ и быстрая локальная проверка по словам-триггерам;
+- распознавание голосовых сообщений и проверка расшифрованного текста на мошенничество;
+- мониторинг новых личных сообщений через Telegram Business;
+- автоматическое удаление сообщений с выраженными признаками мошенничества;
+- проверка российских телефонных номеров по открытым базам жалоб;
+- проверка сайтов, доменов, SSL-сертификатов и блокировок;
+- проверка IP-адресов и email;
+- проверка файлов через Kaspersky OpenTIP;
+- генерация и оценка паролей;
+- шифрование файлов с помощью AES-256-GCM.
 
-## Setup
+## Telegram Business
 
-Python 3.10 or newer is required.
+Бота можно подключить к Telegram-аккаунту через **Настройки → Telegram Business → Чат-боты**. В настройках подключения нужно разрешить доступ к выбранным личным чатам, чтение сообщений и удаление всех сообщений.
+
+После подключения ShieldTools:
+
+1. Получает только новые сообщения из разрешённых чатов.
+2. Сразу проверяет явные слова и конструкции из локального словаря.
+3. Дополнительно анализирует общий смысл сообщения через ИИ.
+4. Для голосового сообщения сначала распознаёт речь, затем проверяет полученный текст теми же алгоритмами.
+5. Удаляет сообщение при высокой вероятности мошенничества.
+6. Отправляет владельцу карточку с отправителем, причинами, текстом или расшифровкой и результатом удаления.
+
+Бот не блокирует пользователей, не отвечает от имени владельца и не получает доступ к старой переписке. Telegram не передаёт бизнес-боту скрытый номер телефона или дату регистрации аккаунта отправителя.
+
+Если бот ещё не подключён, он показывает кнопку подключения в главном меню и присылает инструкцию не чаще одного раза в три часа. После подключения напоминания прекращаются.
+
+## Анализ мошенничества
+
+Проверка состоит из двух простых уровней:
+
+- локальный алгоритм ищет просьбы перевести деньги, назвать код или пароль, передать данные карты, срочно перейти по ссылке, угрозы, выигрыши и попытки выдать себя за организацию;
+- ИИ анализирует смысл целиком и может обнаружить мошеннический сценарий без точного совпадения со словарём.
+
+Если ИИ-сервисы недоступны, бот продолжает работать на локальных правилах. Процент в предупреждении является оценкой риска, а не гарантией.
+
+## Голосовые сообщения
+
+Голосовое сообщение отправляется на распознавание речи:
+
+1. Groq Whisper используется первым.
+2. Gemini используется как резервный вариант.
+3. Расшифрованный текст проходит локальную и смысловую проверку.
+
+Для голосовых предупреждений используется отдельная карточка `images/business_voice.png`. В расшифровке могут быть ошибки из-за шума, качества записи или особенностей речи.
+
+## Проверка телефонных номеров
+
+Используются открытые базы жалоб:
+
+- [Про МФО](https://promfo.ru/proverit-nomer-telefona);
+- [Не Бери Трубку](https://netrubi.ru/).
+
+Номер отправителя проверяется только тогда, когда пользователь сам отправил свою контактную карточку. Отсутствие жалоб в открытых источниках не доказывает безопасность номера.
+
+## Установка
+
+Требуется Python 3.10 или новее.
 
 ```bash
-git clone <repository-url>
-cd <repository-name>
+git clone https://github.com/miroshantoshan/shieldtools-bot.git
+cd shieldtools-bot
 
 python3 -m venv .venv
 source .venv/bin/activate
@@ -28,65 +76,81 @@ python -m pip install -r requirements.txt
 cp .env.example .env
 ```
 
-On Windows, activate the environment and copy the config with:
-
-```powershell
-py -m venv .venv
-.venv\Scripts\Activate.ps1
-Copy-Item .env.example .env
-```
-
-Open `.env` and add your Telegram bot token:
-
-```env
-TG_BOT_TOKEN=your_token_here
-```
-
-The token can be created with [@BotFather](https://t.me/BotFather).
-
-Start the bot:
+Заполните `.env` и запустите бота:
 
 ```bash
 python main.py
 ```
 
-Then open it in Telegram and send `/start`.
+После запуска откройте бота в Telegram и отправьте `/start`.
 
-## Optional API keys
+## Переменные окружения
 
-The bot works with only `TG_BOT_TOKEN`, but some checks need their own API keys.
-
-| Variable | Used for |
+| Переменная | Назначение |
 | --- | --- |
-| `GOOGLE_SAFE_BROWSING_API_KEY` | Link checks |
-| `TWO_IP_API_TOKEN` | Domain blocklist checks |
-| `KASPERSKY_OPENTIP_API_KEY` | Domain and file checks |
-| `OPENROUTER_API_KEY` | AI analysis |
-| `GROQ_API_KEY` | AI analysis |
-| `GEMINI_API_KEY` | AI analysis |
-| `MISTRAL_API_KEY` | AI analysis |
-| `HUGGINGFACE_API_KEY` | AI analysis |
+| `TG_BOT_TOKEN` | Токен Telegram-бота, обязателен |
+| `GEMINI_API_KEY` | Смысловой анализ и резервное распознавание голосовых |
+| `GROQ_API_KEY` | Смысловой анализ и основное распознавание голосовых |
+| `OPENROUTER_API_KEY` | Резервный смысловой анализ |
+| `MISTRAL_API_KEY` | Резервный смысловой анализ |
+| `HUGGINGFACE_API_KEY` | Резервный смысловой анализ |
+| `GOOGLE_SAFE_BROWSING_API_KEY` | Проверка ссылок |
+| `TWO_IP_API_TOKEN` | Проверка блокировок доменов |
+| `KASPERSKY_OPENTIP_API_KEY` | Проверка сайтов и файлов |
 
-You only need one AI provider. If none is configured, message checks fall back to local rules.
+Для базовой работы достаточно `TG_BOT_TOKEN`. Для смысловой проверки нужен хотя бы один ИИ-провайдер. Для голосовых рекомендуется заполнить `GROQ_API_KEY` и `GEMINI_API_KEY`.
 
-Do not upload `.env` to GitHub. It may contain private tokens and is already listed in `.gitignore`.
+Не публикуйте `.env`: файл содержит секретные токены и уже добавлен в `.gitignore`.
 
-## Telegram Business monitoring
+## Запуск через systemd
 
-Any Telegram user can connect the bot to their account through Settings → Telegram Business → Chatbots. The bot owner must first enable Secretary Mode for the bot in @BotFather. Choose only new chats and non-contacts in the connection settings to monitor unfamiliar senders. No account login code, API ID or separate process is needed.
+Пример сервиса для VPS:
 
-When a selected private chat receives a suspicious message, the bot sends a warning to the account owner in the bot chat. It checks the message with simple local rules. A phone number can be checked against the public complaint databases only if the sender explicitly shares their own contact card. The bot does not block senders or reply on behalf of the owner.
+```ini
+[Unit]
+Description=ShieldTools Telegram Bot
+After=network-online.target
 
-Telegram does not expose the sender's account registration date or registered phone number to business bots. Private one-to-one messages do not have a shareable direct message link; the warning includes the message text and a link to the sender's chat when a username exists.
+[Service]
+Type=simple
+User=shieldtools
+WorkingDirectory=/opt/shieldtools
+EnvironmentFile=/opt/shieldtools/.env
+ExecStart=/opt/shieldtools/.venv/bin/python /opt/shieldtools/main.py
+Restart=always
+RestartSec=5
 
-## Notes
+[Install]
+WantedBy=multi-user.target
+```
 
-A clean result does not prove that a message, link, or file is safe. Files submitted for scanning are sent to Kaspersky OpenTIP. AI checks send the provided text or scan result to the first configured provider that responds.
+После создания сервиса:
 
-Encrypted files use the `.shield` extension. The password is not stored, so a lost password cannot be recovered.
+```bash
+sudo systemctl daemon-reload
+sudo systemctl enable --now shieldtools
+sudo systemctl status shieldtools
+```
 
-## License
+## Структура проекта
 
-Released under the MIT License. See [LICENSE](LICENSE).
+- `main.py` — обработчики Telegram и основная логика;
+- `ai_services.py` — локальная и смысловая проверка;
+- `voice_transcriber.py` — распознавание голосовых;
+- `prompts.py` — промпты, причины и слова-триггеры;
+- `keyboards.py` — клавиатуры и кнопки;
+- `crypto_files.py` — шифрование файлов;
+- `images/` — карточки разделов и уведомлений;
+- `videos/business_setup.mp4` — инструкция по подключению Business-бота.
 
-Проверка российских номеров использует открытые базы жалоб [Про МФО](https://promfo.ru/proverit-nomer-telefona) и [Не Бери Трубку](https://netrubi.ru/). Результат показывает ссылки на источники; отсутствие жалоб не означает безопасность звонка.
+## Ограничения
+
+- ИИ и локальные алгоритмы могут ошибаться.
+- Внешние API и открытые базы иногда бывают недоступны.
+- Чистый результат проверки не гарантирует безопасность сообщения, сайта, номера или файла.
+- Файлы для проверки отправляются в Kaspersky OpenTIP.
+- Потерянный пароль от файла `.shield` восстановить невозможно.
+
+## Лицензия
+
+Проект распространяется по лицензии MIT. См. [LICENSE](LICENSE).
