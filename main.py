@@ -183,7 +183,7 @@ def get_main_menu_text(user):
 
 <tg-emoji emoji-id="6023622161543993632">🧭</tg-emoji> <b>Выберите нужный раздел в меню ниже, чтобы начать работу.</b>
 
-<tg-emoji emoji-id="6030400221232501136">🤖</tg-emoji> <b>ShieldTools можно подключить к вашему Telegram-аккаунту, чтобы бот определял мошеннические сообщения сразу в реальном времени.</b>'''
+<tg-emoji emoji-id="6030400221232501136">🤖</tg-emoji> <b>ShieldTools можно подключить к вашему Telegram-аккаунту, чтобы бот в реальном времени распознавал мошеннические текстовые и голосовые сообщения.</b>'''
 
 async def send_main_photo(message, text, reply_markup=None):
     try:
