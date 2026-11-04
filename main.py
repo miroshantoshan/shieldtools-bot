@@ -27,7 +27,7 @@ from dotenv import load_dotenv
 from ai_services import analyze_file, analyze_message, analyze_site, check_local
 from crypto_files import InvalidEncryptedFile, WrongPassword, decrypt_file, encrypt_file
 from prompts import REASONS
-from voice_detector import check_voice, transcribe_voice
+from voice_transcriber import transcribe_voice
 from keyboards import (
     additional_menu,
     get_access_check_keyboard,
@@ -2127,7 +2127,7 @@ def make_business_alert(message, codes, nomer, sources, deleted):
     return answer, keyboard
 
 
-def make_voice_alert(message, result, transcript, codes, deleted):
+def make_voice_alert(message, transcript, codes, deleted):
     sender_text = get_business_sender(message.from_user)
     scam = get_voice_scam_percent(codes)
     causes = ["• " + safe_text(REASONS[code]) for code in codes[:2]]
@@ -2145,7 +2145,6 @@ def make_voice_alert(message, result, transcript, codes, deleted):
 
 <tg-emoji emoji-id="6021451978993834164">🔎</tg-emoji> <b><i>Результат проверки:</i></b>
 <b>Вероятность мошенничества:</b> <b><i>{scam}%</i></b>
-<b>Вероятность генерации голоса ИИ:</b> <b><i>{result["fake"]}%</i></b>
 
 {chr(10).join(causes)}
 
@@ -2184,18 +2183,11 @@ async def get_voice_result(message):
     audio = io.BytesIO()
     await message.bot.download(message.voice, destination=audio)
     data = audio.getvalue()
-    result, transcript = await asyncio.gather(
-        asyncio.to_thread(check_voice, data),
-        asyncio.wait_for(asyncio.to_thread(transcribe_voice, data), 15),
-        return_exceptions=True,
-    )
-    if isinstance(result, Exception):
-        print("Не удалось проверить голос:", repr(result))
-        return None, ""
-    if isinstance(transcript, Exception):
-        print("Не удалось распознать голос:", repr(transcript))
-        transcript = ""
-    return result, transcript
+    try:
+        return await asyncio.wait_for(asyncio.to_thread(transcribe_voice, data), 20)
+    except Exception as error:
+        print("Не удалось распознать голос:", repr(error))
+        return ""
 
 
 @dp.callback_query(F.data == "business_alert_read")
@@ -2242,14 +2234,14 @@ async def check_business_message(message: Message):
         return
 
     if message.voice:
-        result, transcript = await get_voice_result(message)
-        if not result:
+        transcript = await get_voice_result(message)
+        if not transcript:
             return
-        codes = check_business_text(transcript)
-        if result["risk"] == "low" and not codes:
+        codes = check_local(transcript)["reason_codes"]
+        if "no_clear_signs" in codes:
             return
         deleted = await delete_business_message(message) if get_voice_scam_percent(codes) >= 50 else False
-        answer, keyboard = make_voice_alert(message, result, transcript, codes, deleted)
+        answer, keyboard = make_voice_alert(message, transcript, codes, deleted)
         await message.bot.send_photo(
             connection.user_chat_id,
             BUSINESS_ALERT_IMAGE,

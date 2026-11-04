@@ -1,62 +1,21 @@
 import base64
 import json
 import os
-import subprocess
 import urllib.request
 import uuid
 
-import numpy as np
-import onnxruntime as ort
 from dotenv import load_dotenv
 
 
 load_dotenv()
 
 
-MODEL_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "models", "aasist-l.onnx")
 GROQ_API_KEY = os.getenv("GROQ_API_KEY", "")
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
-SESSION = None
 
 
-def get_session():
-    global SESSION
-    if SESSION is None:
-        SESSION = ort.InferenceSession(MODEL_PATH, providers=["CPUExecutionProvider"])
-    return SESSION
-
-
-def get_wav(data):
-    result = subprocess.run(
-        [
-            "ffmpeg", "-loglevel", "error", "-i", "pipe:0", "-f", "f32le",
-            "-acodec", "pcm_f32le", "-ac", "1", "-ar", "16000", "pipe:1",
-        ],
-        input=data,
-        capture_output=True,
-        timeout=20,
-    )
-    if result.returncode or not result.stdout:
-        raise ValueError("Не удалось прочитать голосовое")
-    wav = np.frombuffer(result.stdout, dtype=np.float32)
-    if len(wav) < 1600:
-        raise ValueError("Голосовое слишком короткое")
-    if len(wav) < 64600:
-        wav = np.tile(wav, 64600 // len(wav) + 1)
-    return wav[:64600].reshape(1, 64600)
-
-
-def check_voice(data):
-    wav = get_wav(data)
-    logits = get_session().run(None, {"wav": wav})[0][0]
-    chances = np.exp(logits - np.max(logits))
-    fake = float(chances[0] / chances.sum())
-    risk = "high" if fake >= 0.85 else "medium" if fake >= 0.65 else "low"
-    return {"fake": round(fake * 100), "risk": risk}
-
-
-def make_part(name, value, boundary, filename=None, content_type=None):
-    part = f"--{boundary}\r\nContent-Disposition: form-data; name=\"{name}\""
+def make_part(name, value, granica, filename=None, content_type=None):
+    part = f"--{granica}\r\nContent-Disposition: form-data; name=\"{name}\""
     if filename:
         part += f"; filename=\"{filename}\""
     part += "\r\n"
@@ -84,7 +43,7 @@ def transcribe_groq(data):
         },
         method="POST",
     )
-    with urllib.request.urlopen(request, timeout=25) as response:
+    with urllib.request.urlopen(request, timeout=15) as response:
         result = json.loads(response.read().decode("utf-8"))
     return result.get("text", "").strip()
 
@@ -116,7 +75,7 @@ def transcribe_gemini(data):
         },
         method="POST",
     )
-    with urllib.request.urlopen(request, timeout=25) as response:
+    with urllib.request.urlopen(request, timeout=15) as response:
         result = json.loads(response.read().decode("utf-8"))
     return result["candidates"][0]["content"]["parts"][0]["text"].strip()
 
