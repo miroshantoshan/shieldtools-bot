@@ -2129,13 +2129,10 @@ def make_business_alert(message, codes, nomer, sources, deleted):
 
 def make_voice_alert(message, result, transcript, codes, deleted):
     sender_text = get_business_sender(message.from_user)
-    risk_text = {
-        "high": "Высокая вероятность синтеза",
-        "medium": "Есть признаки синтеза",
-        "low": "Явных признаков синтеза нет",
-    }[result["risk"]]
-    causes = [f'• Детектор голоса: <b>{risk_text}</b> ({result["fake"]}%)']
-    causes += ["• " + safe_text(REASONS[code]) for code in codes[:2]]
+    scam = get_voice_scam_percent(codes)
+    causes = ["• " + safe_text(REASONS[code]) for code in codes[:2]]
+    if not causes:
+        causes = ["• Явных мошеннических фраз не найдено."]
     text = safe_text(transcript[:500]) if transcript else "Не удалось распознать речь"
     if deleted:
         delete_text = "<b>Сообщение было удалено у обоих участников чата.</b>"
@@ -2147,6 +2144,9 @@ def make_voice_alert(message, result, transcript, codes, deleted):
 <tg-emoji emoji-id="6019279794988915337">📞</tg-emoji> <b>Номер:</b> <b><i>Номер скрыт</i></b>
 
 <tg-emoji emoji-id="6021451978993834164">🔎</tg-emoji> <b><i>Результат проверки:</i></b>
+<b>Вероятность мошенничества:</b> <b><i>{scam}%</i></b>
+<b>Вероятность генерации голоса ИИ:</b> <b><i>{result["fake"]}%</i></b>
+
 {chr(10).join(causes)}
 
 <tg-emoji emoji-id="6021741116192201252">📩</tg-emoji> <b><i>Распознанный текст:</i></b>
@@ -2163,6 +2163,21 @@ def make_voice_alert(message, result, transcript, codes, deleted):
         )
     ]])
     return answer, keyboard
+
+
+def get_voice_scam_percent(codes):
+    ves = {
+        "money_request": 30,
+        "card_data": 45,
+        "password_code": 45,
+        "suspicious_link": 25,
+        "urgency_pressure": 20,
+        "threat": 25,
+        "prize": 30,
+        "impersonation": 30,
+        "too_good_to_be_true": 25,
+    }
+    return min(95, 5 + sum(ves.get(code, 0) for code in codes))
 
 
 async def get_voice_result(message):
@@ -2233,7 +2248,7 @@ async def check_business_message(message: Message):
         codes = check_business_text(transcript)
         if result["risk"] == "low" and not codes:
             return
-        deleted = await delete_business_message(message) if codes else False
+        deleted = await delete_business_message(message) if get_voice_scam_percent(codes) >= 50 else False
         answer, keyboard = make_voice_alert(message, result, transcript, codes, deleted)
         await message.bot.send_photo(
             connection.user_chat_id,
