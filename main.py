@@ -101,6 +101,8 @@ EMAIL_IMAGE = IMAGE_BASE + "email.png"
 CRYPTO_IMAGE = IMAGE_BASE + "crypto.png"
 BUSINESS_ALERT_IMAGE = IMAGE_BASE + "business_alert.png?v=415bbd0"
 BUSINESS_CONNECTED_IMAGE = IMAGE_BASE + "business_connected.png"
+BUSINESS_DISCONNECTED_IMAGE = IMAGE_BASE + "business_disconnected.png"
+BUSINESS_VOICE_IMAGE = IMAGE_BASE + "business_voice.png"
 BUSINESS_GUIDE_VIDEO = "https://raw.githubusercontent.com/miroshantoshan/shieldtools-bot/main/videos/business_setup.mp4"
 BUSINESS_STATE_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "business_users.json")
 BUSINESS_AD_DELAY = 3 * 60 * 60
@@ -395,14 +397,15 @@ async def business_help(message: Message):
 
 
 async def send_business_guide(bot, chat_id):
+    me = await bot.get_me()
     await bot.send_video(
         chat_id,
         BUSINESS_GUIDE_VIDEO,
-        caption='''<b><i><tg-emoji emoji-id="6023622161543993632">🧭</tg-emoji> Как подключить ShieldTools к аккаунту</i></b>
+        caption=f'''<b><i><tg-emoji emoji-id="6023622161543993632">🧭</tg-emoji> Как подключить ShieldTools к аккаунту</i></b>
 
 1. Откройте свой профиль Telegram и нажмите <b>«Изменить»</b>.
 2. Выберите <b>«Автоматизация чатов»</b> или <b>«Telegram Business → Чат-боты»</b>.
-3. Укажите <code>@olimpnavigator_bot</code> и нажмите <b>«Добавить»</b>.
+3. Укажите <code>@{me.username}</code> и нажмите <b>«Добавить»</b>.
 4. Разрешите доступ к <b>новым чатам</b> и сообщениям от <b>не контактов</b>.
 5. Разрешите боту <b>читать и удалять все сообщения</b>.
 6. Сохраните настройки.
@@ -2216,9 +2219,14 @@ async def business_connected(connection: BusinessConnection, bot: Bot):
         )
     else:
         set_business_connected(connection.user_chat_id, False)
-        await bot.send_message(
+        await bot.send_photo(
             connection.user_chat_id,
-            "<b>ShieldTools отключён от аккаунта.</b> Проверка сообщений в реальном времени остановлена.",
+            BUSINESS_DISCONNECTED_IMAGE,
+            caption='''<b><i><tg-emoji emoji-id="5219805369806629055">🛡</tg-emoji> ShieldTools отключён</i></b>
+
+<tg-emoji emoji-id="5276240711795107620">❌</tg-emoji> <b>Проверка текстовых и голосовых сообщений в реальном времени остановлена.</b>
+
+<tg-emoji emoji-id="6030400221232501136">🤖</tg-emoji> <i>Вы можете в любой момент подключить бота снова.</i>''',
             parse_mode="HTML",
             reply_markup=menu_with_business,
         )
@@ -2244,7 +2252,7 @@ async def check_business_message(message: Message):
         answer, keyboard = make_voice_alert(message, transcript, codes, deleted)
         await message.bot.send_photo(
             connection.user_chat_id,
-            BUSINESS_ALERT_IMAGE,
+            BUSINESS_VOICE_IMAGE,
             caption=answer,
             parse_mode="HTML",
             reply_markup=keyboard,
