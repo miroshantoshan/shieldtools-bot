@@ -2171,7 +2171,7 @@ async def get_voice_result(message):
     data = audio.getvalue()
     result, transcript = await asyncio.gather(
         asyncio.to_thread(check_voice, data),
-        asyncio.to_thread(transcribe_voice, data),
+        asyncio.wait_for(asyncio.to_thread(transcribe_voice, data), 15),
         return_exceptions=True,
     )
     if isinstance(result, Exception):
