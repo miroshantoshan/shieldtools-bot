@@ -102,7 +102,10 @@ def transcribe_gemini(data):
                 }},
             ]
         }],
-        "generationConfig": {"temperature": 0},
+        "generationConfig": {
+            "temperature": 0,
+            "thinkingConfig": {"thinkingBudget": 0},
+        },
     }
     request = urllib.request.Request(
         "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent",
