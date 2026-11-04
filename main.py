@@ -24,7 +24,7 @@ from aiogram.types import BotCommand, BufferedInputFile, BusinessConnection, Cal
 from aiogram.utils.callback_answer import CallbackAnswerMiddleware
 from dotenv import load_dotenv
 
-from ai_services import analyze_file, analyze_message, analyze_site, check_local
+from ai_services import analyze_file, analyze_message, analyze_message_data, analyze_site, check_local
 from crypto_files import InvalidEncryptedFile, WrongPassword, decrypt_file, encrypt_file
 from prompts import REASONS
 from voice_transcriber import transcribe_voice
@@ -2130,17 +2130,19 @@ def make_business_alert(message, codes, nomer, sources, deleted):
     return answer, keyboard
 
 
-def make_voice_alert(message, transcript, codes, deleted):
+def make_voice_alert(message, transcript, codes, ai_scam, deleted):
     sender_text = get_business_sender(message.from_user)
-    scam = get_voice_scam_percent(codes)
+    scam = get_voice_scam_percent(codes, ai_scam)
     causes = ["• " + safe_text(REASONS[code]) for code in codes[:2]]
+    if ai_scam:
+        causes.insert(0, "• ИИ-анализ смысла обнаружил мошеннический сценарий.")
     if not causes:
         causes = ["• Явных мошеннических фраз не найдено."]
     text = safe_text(transcript[:500]) if transcript else "Не удалось распознать речь"
     if deleted:
         delete_text = "<b>Сообщение было удалено у обоих участников чата.</b>"
     else:
-        delete_text = "<b>Сообщение не удалено. Детектор голоса может ошибаться.</b>"
+        delete_text = "<b>Сообщение не удалено. Признаков недостаточно для автоматического удаления.</b>"
     answer = f'''<b><i><tg-emoji emoji-id="5219805369806629055">🛡</tg-emoji> Подозрительное голосовое сообщение</i></b>
 
 <tg-emoji emoji-id="6023985511482268644">👤</tg-emoji> <b>Отправитель:</b> {sender_text}
@@ -2167,7 +2169,7 @@ def make_voice_alert(message, transcript, codes, deleted):
     return answer, keyboard
 
 
-def get_voice_scam_percent(codes):
+def get_voice_scam_percent(codes, ai_scam=False):
     ves = {
         "money_request": 30,
         "card_data": 45,
@@ -2179,7 +2181,18 @@ def get_voice_scam_percent(codes):
         "impersonation": 30,
         "too_good_to_be_true": 25,
     }
-    return min(95, 5 + sum(ves.get(code, 0) for code in codes))
+    chance = min(95, 5 + sum(ves.get(code, 0) for code in codes))
+    return max(chance, 75) if ai_scam else chance
+
+
+async def get_ai_result(text):
+    try:
+        return await asyncio.wait_for(asyncio.to_thread(analyze_message_data, text), 12)
+    except Exception as error:
+        print("Не удалось выполнить ИИ-анализ:", repr(error))
+        data = check_local(text)
+        data["ai"] = False
+        return data
 
 
 async def get_voice_result(message):
@@ -2245,11 +2258,16 @@ async def check_business_message(message: Message):
         transcript = await get_voice_result(message)
         if not transcript:
             return
-        codes = check_local(transcript)["reason_codes"]
-        if "no_clear_signs" in codes:
+        local = check_local(transcript)["reason_codes"]
+        ai = await get_ai_result(transcript)
+        ai_scam = ai["verdict"] == "scam" and ai.get("ai", False)
+        codes = list(dict.fromkeys(
+            [code for code in local + ai["reason_codes"] if code != "no_clear_signs"]
+        ))
+        if not codes and not ai_scam:
             return
-        deleted = await delete_business_message(message) if get_voice_scam_percent(codes) >= 50 else False
-        answer, keyboard = make_voice_alert(message, transcript, codes, deleted)
+        deleted = await delete_business_message(message) if get_voice_scam_percent(codes, ai_scam) >= 50 else False
+        answer, keyboard = make_voice_alert(message, transcript, codes, ai_scam, deleted)
         await message.bot.send_photo(
             connection.user_chat_id,
             BUSINESS_VOICE_IMAGE,
@@ -2259,8 +2277,12 @@ async def check_business_message(message: Message):
         )
         return
 
-    codes = check_business_text(message.text or message.caption or "")
+    text = message.text or message.caption or ""
+    codes = check_business_text(text)
     deleted = await delete_business_message(message) if codes else False
+    ai = await get_ai_result(text) if text else {"verdict": "not_scam", "reason_codes": []}
+    if ai["verdict"] == "scam":
+        codes = list(dict.fromkeys(codes + ai["reason_codes"]))
     nomer = get_business_phone(message)
     sources = []
     if nomer:

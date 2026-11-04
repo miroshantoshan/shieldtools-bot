@@ -239,15 +239,33 @@ def check_local(text):
     return {"verdict": "not_scam", "reason_codes": ["no_clear_signs"]}
 
 
-def analyze_message(text):
+def normalize_message_data(data):
+    verdict = data.get("verdict")
+    codes = data.get("reason_codes", [])
+    if not isinstance(codes, list):
+        codes = []
+    codes = [code for code in codes if code in REASONS and code != "no_clear_signs"]
+    if verdict != "scam" or not codes:
+        return {"verdict": "not_scam", "reason_codes": ["no_clear_signs"]}
+    return {"verdict": "scam", "reason_codes": codes}
+
+
+def analyze_message_data(text):
     for name, function in get_providers():
         try:
-            data = function(text)
-            return make_answer(data)
+            data = normalize_message_data(function(text))
+            data["ai"] = True
+            return data
         except Exception:
             pass
 
-    return make_answer(check_local(text))
+    data = check_local(text)
+    data["ai"] = False
+    return data
+
+
+def analyze_message(text):
+    return make_answer(analyze_message_data(text))
 
 
 def check_site_local(url, reputation_status="unknown"):
