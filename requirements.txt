@@ -1,3 +1,5 @@
 aiogram==3.22.0
 python-dotenv==1.1.1
 cryptography==45.0.4
+numpy==2.5.4
+onnxruntime==1.31.1

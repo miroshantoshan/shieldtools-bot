@@ -27,6 +27,7 @@ from dotenv import load_dotenv
 from ai_services import analyze_file, analyze_message, analyze_site, check_local
 from crypto_files import InvalidEncryptedFile, WrongPassword, decrypt_file, encrypt_file
 from prompts import REASONS
+from voice_detector import check_voice, transcribe_voice
 from keyboards import (
     additional_menu,
     get_access_check_keyboard,
@@ -2126,6 +2127,62 @@ def make_business_alert(message, codes, nomer, sources, deleted):
     return answer, keyboard
 
 
+def make_voice_alert(message, result, transcript, codes, deleted):
+    sender_text = get_business_sender(message.from_user)
+    risk_text = {
+        "high": "Высокая вероятность синтеза",
+        "medium": "Есть признаки синтеза",
+        "low": "Явных признаков синтеза нет",
+    }[result["risk"]]
+    causes = [f'• Детектор голоса: <b>{risk_text}</b> ({result["fake"]}%)']
+    causes += ["• " + safe_text(REASONS[code]) for code in codes[:2]]
+    text = safe_text(transcript[:500]) if transcript else "Не удалось распознать речь"
+    if deleted:
+        delete_text = "<b>Сообщение было удалено у обоих участников чата.</b>"
+    else:
+        delete_text = "<b>Сообщение не удалено. Детектор голоса может ошибаться.</b>"
+    answer = f'''<b><i><tg-emoji emoji-id="5219805369806629055">🛡</tg-emoji> Подозрительное голосовое сообщение</i></b>
+
+<tg-emoji emoji-id="6023985511482268644">👤</tg-emoji> <b>Отправитель:</b> {sender_text}
+<tg-emoji emoji-id="6019279794988915337">📞</tg-emoji> <b>Номер:</b> <b><i>Номер скрыт</i></b>
+
+<tg-emoji emoji-id="6021451978993834164">🔎</tg-emoji> <b><i>Результат проверки:</i></b>
+{chr(10).join(causes)}
+
+<tg-emoji emoji-id="6021741116192201252">📩</tg-emoji> <b><i>Распознанный текст:</i></b>
+<blockquote>{text}</blockquote>
+
+<b><i>Не доверяйте голосу без дополнительной проверки личности отправителя.</i></b>
+
+{delete_text}'''
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[[
+        InlineKeyboardButton(
+            text="Я ознакомился, спасибо!",
+            callback_data="business_alert_read",
+            style="primary",
+        )
+    ]])
+    return answer, keyboard
+
+
+async def get_voice_result(message):
+    audio = io.BytesIO()
+    await message.bot.download(message.voice, destination=audio)
+    data = audio.getvalue()
+    result, transcript = await asyncio.gather(
+        asyncio.to_thread(check_voice, data),
+        asyncio.to_thread(transcribe_voice, data),
+        return_exceptions=True,
+    )
+    if isinstance(result, Exception):
+        print("Не удалось проверить голос:", repr(result))
+        return None, ""
+    if isinstance(transcript, Exception):
+        print("Не удалось распознать голос:", repr(transcript))
+        transcript = ""
+    return result, transcript
+
+
 @dp.callback_query(F.data == "business_alert_read")
 async def business_alert_read(callback: CallbackQuery):
     await callback.message.edit_reply_markup(reply_markup=None)
@@ -2167,6 +2224,24 @@ async def check_business_message(message: Message):
     connection = await message.bot.get_business_connection(message.business_connection_id)
     sender = message.from_user
     if not connection.is_enabled or sender.is_bot or sender.id == connection.user.id or message.sender_business_bot:
+        return
+
+    if message.voice:
+        result, transcript = await get_voice_result(message)
+        if not result:
+            return
+        codes = check_business_text(transcript)
+        if result["risk"] == "low" and not codes:
+            return
+        deleted = await delete_business_message(message) if codes else False
+        answer, keyboard = make_voice_alert(message, result, transcript, codes, deleted)
+        await message.bot.send_photo(
+            connection.user_chat_id,
+            BUSINESS_ALERT_IMAGE,
+            caption=answer,
+            parse_mode="HTML",
+            reply_markup=keyboard,
+        )
         return
 
     codes = check_business_text(message.text or message.caption or "")
